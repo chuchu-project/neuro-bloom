@@ -1,0 +1,2427 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b1220'/%3E%3Cpath d='M13 34h7l4-13 6 25 5-19 4 11h12' fill='none' stroke='%23a3e635' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<title>NeuroBloom 控制台</title>
+<style>
+  /* ============================================================
+     配色：深空底 + 霓虹彩色。所有颜色都在这里改，别散落到各处。
+     ============================================================ */
+  :root{
+    --bg:#070910;
+    --ink:#eef2ff;
+    --dim:#98a0bb;          /* 正文次要色，深底上 5.2:1，投影也读得清 */
+    --line:rgba(255,255,255,.10);
+    --cyan:#5ec8dd;         /* 主色：冷静的青，不是霓虹 */
+    --green:#7fc45a;        /* 放松态 */
+    --lime:#a3e635;
+    --amber:#fbbf24;
+    --red:#fb7185;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro SC","PingFang SC","Helvetica Neue",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;padding:26px 30px 30px;
+    min-height:100vh;display:flex;flex-direction:column;
+  }
+
+  /* ---------- 背景：一层静态的深色渐变，不再有浮动色斑 ---------- */
+  .aurora{
+    position:fixed;inset:0;z-index:-2;pointer-events:none;
+    background:radial-gradient(120% 70% at 50% 0%,#0e1526 0%,#080a12 55%,var(--bg) 100%);
+  }
+
+  /* ---------- 顶部 ---------- */
+  header{display:flex;align-items:center;gap:24px;flex-wrap:wrap;margin-bottom:22px}
+  .brand{display:flex;align-items:baseline;gap:14px}
+  .brand h1{
+    font-size:30px;font-weight:800;letter-spacing:-.5px;color:#f2f5ff;
+  }
+  .brand span{font-size:13px;color:var(--dim);letter-spacing:2px}
+  .pills{display:flex;gap:10px;flex-wrap:wrap;margin-left:auto}
+  .pill{
+    display:flex;align-items:center;gap:8px;
+    padding:8px 14px;border-radius:999px;font-size:12.5px;color:var(--dim);
+    background:rgba(255,255,255,.045);border:1px solid var(--line);
+    backdrop-filter:blur(14px);
+  }
+  .dot{width:8px;height:8px;border-radius:50%;background:#475569;box-shadow:0 0 0 0 rgba(163,230,53,.5)}
+  .pill.on .dot{background:var(--lime);animation:breathe 2.4s ease-out infinite}
+  .pill.warn .dot{background:var(--amber)}
+  .pill.off .dot{background:#475569}
+  @keyframes breathe{
+    0%{box-shadow:0 0 0 0 rgba(163,230,53,.55)}
+    70%{box-shadow:0 0 0 9px rgba(163,230,53,0)}
+    100%{box-shadow:0 0 0 0 rgba(163,230,53,0)}
+  }
+  .clock{font-variant-numeric:tabular-nums;font-size:13px;color:var(--dim);padding-left:6px}
+
+  /* ---------- 卡片通用 ---------- */
+  main{
+    display:grid;gap:16px;flex:1;min-height:0;
+    grid-template-rows:repeat(4,minmax(150px,1fr));
+    grid-template-columns:repeat(12,1fr);
+    grid-template-areas:
+      "relax relax relax relax chan chan chan chan chan world world world"
+      "relax relax relax relax chan chan chan chan chan wthr wthr wthr"
+      "view view view view view view guide guide guide guide guide guide"
+      "view view view view view view strat strat strat rec rec rec";
+  }
+  .card{
+    position:relative;border-radius:22px;padding:18px 20px 20px;
+    background:linear-gradient(160deg,rgba(255,255,255,.075),rgba(255,255,255,.018) 60%);
+    border:1px solid var(--line);backdrop-filter:blur(20px) saturate(150%);
+    box-shadow:0 20px 50px -30px rgba(0,0,0,.9),inset 0 1px 0 rgba(255,255,255,.06);
+    overflow:hidden;
+  }
+  /* 卡片描边：只留一条极淡的顶边，不做彩色高光 */
+  .card::after{
+    content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+    padding:1px;
+    background:linear-gradient(180deg,rgba(255,255,255,.10),transparent 55%);
+    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor;mask-composite:exclude;
+  }
+  .card h2{
+    font-size:12px;font-weight:600;letter-spacing:1.6px;color:var(--dim);
+    text-transform:uppercase;margin-bottom:14px;display:flex;align-items:center;gap:8px;
+  }
+  .card h2 em{font-style:normal;color:#cbd5ff;letter-spacing:0}
+  .tag{
+    margin-left:auto;font-size:11px;letter-spacing:0;color:var(--dim);
+    border:1px solid var(--line);border-radius:999px;padding:3px 9px;
+  }
+
+  /* ---------- 模块 1：放松度 ---------- */
+  .relax{grid-area:relax;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+  .ring{
+    --p:0;--c1:var(--cyan);--c2:var(--green);
+    width:214px;height:214px;border-radius:50%;position:relative;display:grid;place-items:center;
+    margin:6px 0 4px;
+  }
+  .ring::before{
+    content:"";position:absolute;inset:0;border-radius:50%;
+    background:conic-gradient(from -90deg,var(--c1) 0,var(--c2) calc(var(--p)*1turn),rgba(255,255,255,.06) calc(var(--p)*1turn));
+    -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 15px),#000 calc(100% - 14px));
+    mask:radial-gradient(farthest-side,transparent calc(100% - 15px),#000 calc(100% - 14px));
+    transition:background .5s linear;
+  }
+  .ring::after{
+    content:"";position:absolute;inset:26px;border-radius:50%;
+    background:radial-gradient(circle at 50% 30%,rgba(94,200,221,.07),transparent 70%);
+  }
+  .ring .core{position:relative;text-align:center;z-index:1}
+  .ring .val{
+    font-size:56px;font-weight:750;line-height:1;font-variant-numeric:tabular-nums;
+    letter-spacing:-2px;color:#f2f5ff;
+  }
+  .ring .val small{font-size:20px;font-weight:600;color:var(--dim);-webkit-text-fill-color:var(--dim);margin-left:2px}
+  .ring .cap{font-size:12px;color:var(--dim);letter-spacing:2px;margin-top:8px}
+  .ring.bump .val{animation:bump .45s ease}
+  @keyframes bump{40%{transform:scale(1.06)}}
+  .state-word{
+    font-size:19px;font-weight:700;letter-spacing:1px;padding:5px 18px;border-radius:999px;
+    background:rgba(34,211,238,.12);border:1px solid rgba(34,211,238,.35);color:#a5f3fc;
+  }
+  .state-word.tense{background:rgba(251,113,133,.12);border-color:rgba(251,113,133,.4);color:#fecdd3}
+  .state-word.neutral{background:rgba(148,163,184,.12);border-color:rgba(148,163,184,.35);color:#dbe4f5}
+  .state-word.bad{background:rgba(148,163,184,.1);border-color:rgba(148,163,184,.3);color:#cbd5e1}
+  .relax .sub{font-size:12.5px;color:var(--dim);text-align:center;line-height:1.7;margin-top:10px}
+  .relax .sub b{color:#c7d2fe;font-weight:600}
+
+  /* ---------- 模块 1b：第二条轴（专注） ---------- */
+  .axis-row{display:flex;align-items:center;gap:9px;width:100%;margin-top:14px}
+  .axis-row .nm{font-size:11.5px;color:var(--dim);white-space:nowrap}
+  .axis-row .track{flex:1;height:6px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden}
+  .axis-row .fill{height:100%;width:0;border-radius:99px;background:var(--green);transition:width .6s ease}
+  .axis-row .vl{font-size:12px;color:#dbe4f5;font-variant-numeric:tabular-nums;min-width:32px;text-align:right}
+
+  /* ---------- 模块 2：通道 ---------- */
+  .chan{grid-area:chan;display:flex;flex-direction:column}
+  .chan-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;flex:1;grid-auto-rows:1fr;min-height:0}
+  .chip{
+    position:relative;border-radius:13px;padding:9px 11px 11px;overflow:hidden;
+    display:flex;flex-direction:column;justify-content:center;
+    background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.07);
+    transition:transform .2s,box-shadow .3s;
+  }
+  .chip b{display:block;font-size:11px;font-weight:600;color:var(--dim);letter-spacing:.6px}
+  .chip s{display:block;text-decoration:none;font-size:15px;font-weight:650;margin-top:3px;font-variant-numeric:tabular-nums}
+  .chip i{position:absolute;left:0;bottom:0;height:3px;width:0;border-radius:2px;transition:width .45s ease}
+  .chip.ok{border-color:rgba(163,230,53,.35);background:linear-gradient(160deg,rgba(163,230,53,.14),rgba(163,230,53,.03))}
+  .chip.ok s{color:#d9f99d}.chip.ok i{background:var(--lime)}
+  .chip.warn{border-color:rgba(251,191,36,.32);background:linear-gradient(160deg,rgba(251,191,36,.12),rgba(251,191,36,.02))}
+  .chip.warn s{color:#fde68a}.chip.warn i{background:var(--amber)}
+  .chip.bad{border-color:rgba(251,113,133,.3);background:linear-gradient(160deg,rgba(251,113,133,.12),rgba(251,113,133,.02))}
+  .chip.bad s{color:#fecdd3}.chip.bad i{background:var(--red)}
+  .chip.pending{border-style:dashed;opacity:.62}
+  .legend{display:flex;gap:16px;margin-top:13px;font-size:11.5px;color:var(--dim)}
+  .legend span{display:flex;align-items:center;gap:6px}
+  .legend u{width:8px;height:8px;border-radius:3px;text-decoration:none;display:inline-block}
+
+  /* ---------- 模块 2b：左右半球 + 五频带 ---------- */
+  .hemi,.bands{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+  .hemi .hrow{display:flex;align-items:center;gap:9px;font-size:11.5px;color:var(--dim);margin-bottom:7px}
+  .hemi .hrow .nm{width:62px;white-space:nowrap}
+  .hemi .track{flex:1;height:6px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden}
+  .hemi .fill{height:100%;width:0;border-radius:99px;transition:width .6s ease}
+  .hemi .fill.hl{background:var(--cyan)}
+  .hemi .fill.hr{background:var(--green)}
+  .hemi .hrow .vl{font-size:11.5px;color:#cbd5e8;font-variant-numeric:tabular-nums;min-width:52px;text-align:right}
+  .hemi .li-line{display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:var(--dim);margin-top:2px}
+  .hemi .li-line b{font-size:15px;color:#eef3ff;font-variant-numeric:tabular-nums}
+  .bands{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+  .bands .bd{display:flex;flex-direction:column;gap:5px;font-size:11.5px;color:var(--dim)}
+  .bands .bd .bar{height:56px;display:flex;align-items:flex-end;background:rgba(255,255,255,.05);border-radius:6px;overflow:hidden}
+  .bands .bd .bar i{display:block;width:100%;height:0;border-radius:6px;background:rgba(94,200,221,.55);transition:height .6s ease}
+  .bands .bd b{font-size:12px;color:#dbe4f5;font-weight:600;font-variant-numeric:tabular-nums}
+
+  /* ---------- 模块 3：世界四键 ---------- */
+  .world{grid-area:world;display:flex;flex-direction:column;justify-content:space-between;gap:10px}
+  .world h2{margin-bottom:8px}
+  .world .bar-row{min-height:18px}
+  .bar-row{display:grid;grid-template-columns:52px 1fr 52px;align-items:center;gap:11px}
+  .bar-row .nm{font-size:13px;color:#c7d2fe}
+  .bar-row .vl{font-size:13px;text-align:right;font-variant-numeric:tabular-nums;color:#e2e8ff}
+  .track{height:9px;border-radius:999px;background:rgba(255,255,255,.07);overflow:hidden;position:relative}
+  .fill{height:100%;width:0;border-radius:999px;transition:width .6s cubic-bezier(.22,1,.36,1)}
+  .fill.sun{background:linear-gradient(90deg,#f59e0b,#fde68a)}
+  .fill.fog{background:linear-gradient(90deg,#64748b,#a8b4c6)}
+  .fill.bloom{background:linear-gradient(90deg,#ec4899,#f9a8d4)}
+  .fill.crystal{background:linear-gradient(90deg,#0e7490,#67e8f9)}
+
+  /* ---------- 模块 4：天气三态 ---------- */
+  .wthr{grid-area:wthr;display:flex;flex-direction:column}
+  .wthr-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;flex:1;min-height:96px}
+  .wcard{
+    border-radius:16px;padding:13px 14px;position:relative;overflow:hidden;
+    border:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column;justify-content:flex-end;
+    min-height:104px;transition:transform .3s,box-shadow .35s,border-color .35s;
+  }
+  .wcard .sky{position:absolute;inset:0;opacity:.55;transition:opacity .4s}
+  .wcard .nm{position:relative;font-size:14px;font-weight:650;z-index:1}
+  .wcard .en{position:relative;font-size:11px;color:rgba(255,255,255,.55);letter-spacing:1.4px;z-index:1;margin-top:2px}
+  .wcard[data-w="sunny"] .sky{background:linear-gradient(165deg,#fbbf24,#f97316 55%,#ec4899)}
+  .wcard[data-w="rainy"] .sky{background:linear-gradient(165deg,#64748b,#475569 55%,#1e293b)}
+  .wcard[data-w="night"] .sky{background:linear-gradient(165deg,#312e81,#1e1b4b 60%,#0f172a)}
+  .wcard.active{transform:translateY(-2px);border-color:rgba(255,255,255,.42);
+    box-shadow:0 12px 34px -12px rgba(255,255,255,.32),0 0 0 1px rgba(255,255,255,.18) inset}
+  .wcard.active .sky{opacity:.95}
+  .wcard .now{
+    position:absolute;top:10px;right:10px;z-index:2;font-size:11px;padding:2px 8px;border-radius:999px;
+    background:rgba(0,0,0,.42);border:1px solid rgba(255,255,255,.35);backdrop-filter:blur(6px);
+    opacity:0;transform:translateY(-4px);transition:.3s;
+  }
+  .wcard.active .now{opacity:1;transform:none}
+  .wcard .scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(5,6,15,0) 30%,rgba(5,6,15,.82))}
+
+  /* ---------- 模块 5：策略 ---------- */
+  .strat{grid-area:strat;display:flex;flex-direction:column}
+  .strat .big{display:flex;align-items:baseline;gap:10px}
+  .strat .big .r{font-size:34px;font-weight:750;font-variant-numeric:tabular-nums;color:#a8e6f0}
+  .strat .big .p{font-size:15px;font-weight:650;color:#dbe4f5}
+  .strat .mode{font-size:11.5px;color:var(--dim);margin-top:6px}
+  .strat .mode b{color:#a5f3fc;font-weight:600}
+  .round-track{margin-top:auto;height:5px;border-radius:999px;background:rgba(255,255,255,.07);overflow:hidden}
+  .round-fill{height:100%;width:0;background:linear-gradient(90deg,#5ec8dd,#7fc45a);transition:width .5s}
+  .strat .hint{font-size:11.5px;color:var(--dim);margin-top:9px}
+
+  /* ---------- 模块 6：录制 ---------- */
+  .rec{grid-area:rec;display:flex;flex-direction:column;gap:12px}
+  .rec-top{display:flex;align-items:center;gap:10px}
+  .rec-led{width:11px;height:11px;border-radius:50%;background:#475569}
+  .rec-led.on{background:var(--red);box-shadow:0 0 0 0 rgba(251,113,133,.6);animation:recblink 1.6s infinite}
+  @keyframes recblink{0%{box-shadow:0 0 0 0 rgba(251,113,133,.6)}70%{box-shadow:0 0 0 10px rgba(251,113,133,0)}100%{box-shadow:0 0 0 0 rgba(251,113,133,0)}}
+  .rec-top .t{font-size:14px;font-weight:650}
+  .rec-top .p{font-size:11.5px;color:var(--dim);margin-left:auto;font-family:ui-monospace,Menlo,monospace}
+  .rec-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:auto}
+  .rec-cell{background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:9px 11px}
+  .rec-cell .k{font-size:11px;color:var(--dim);letter-spacing:1px}
+  .rec-cell .v{font-size:17px;font-weight:650;margin-top:3px;font-variant-numeric:tabular-nums}
+
+  /* ---------- 模块 7：引导语 ---------- */
+  .guide{grid-area:guide;display:flex;flex-direction:column;justify-content:center;position:relative}
+  .guide .q{
+    font-size:15px;line-height:1.75;color:#e8ecff;letter-spacing:.2px;
+    display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
+    transition:opacity .45s;
+  }
+  .guide .q.fade{opacity:0}
+  .guide .cue{font-size:11.5px;color:#8b93b5;margin-top:9px;letter-spacing:.3px}
+  .guide .cue b{color:#a5f3fc;font-weight:600}
+
+  /* ---------- 模块 8：Unity 画面 ---------- */
+  .view{grid-area:view;padding:0;overflow:hidden;background:#05060e}
+  .view img:not([src]){display:none}
+  .view img{
+    position:absolute;inset:0;width:100%;height:100%;object-fit:contain;
+    display:block;background:radial-gradient(circle at 50% 45%,#0b1024,#04050c 72%);
+  }
+  .view-empty{
+    position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:9px;text-align:center;padding:24px;
+    background:radial-gradient(circle at 50% 40%,rgba(255,255,255,.025),rgba(5,6,15,.92) 70%);
+  }
+  .view-empty .ringmini{
+    width:54px;height:54px;border-radius:50%;border:2px dashed rgba(34,211,238,.5);
+    animation:spin 14s linear infinite;position:relative;
+  }
+  .view-empty .ringmini::after{
+    content:"";position:absolute;inset:11px;border-radius:50%;
+    background:radial-gradient(circle,rgba(94,200,221,.35),transparent 70%);
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .view-empty .t{font-size:15px;font-weight:650;color:#dbeafe}
+  .view-empty .d{font-size:12px;color:#8b93b5;line-height:1.7;max-width:380px}
+  .view-empty .launch-btn{
+    margin-top:6px;padding:9px 22px;border-radius:999px;cursor:pointer;
+    font:650 13px/1 -apple-system,"PingFang SC",sans-serif;letter-spacing:.3px;
+    color:#04222a;background:linear-gradient(180deg,#7ee7f5,#3fc4dd);
+    border:1px solid rgba(165,243,252,.55);
+    box-shadow:0 8px 24px -10px rgba(63,196,221,.85);
+    transition:transform .16s,filter .16s,opacity .16s;
+  }
+  .view-empty .launch-btn:hover{transform:translateY(-1px);filter:brightness(1.07)}
+  .view-empty .launch-btn:active{transform:none}
+  .view-empty .launch-btn[disabled]{opacity:.55;cursor:progress;transform:none}
+  .view-empty code{
+    font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:#a5f3fc;
+    background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.25);
+    padding:2px 7px;border-radius:6px;
+  }
+  .view-bar{
+    position:absolute;left:0;right:0;top:0;display:flex;align-items:center;gap:9px;
+    padding:11px 15px;font-size:12px;color:#cbd5ff;
+    background:linear-gradient(180deg,rgba(5,6,15,.85),rgba(5,6,15,0));
+    pointer-events:none;
+  }
+  .view-bar .vdot{width:8px;height:8px;border-radius:50%;background:#475569}
+  .view-bar.live .vdot{background:var(--lime);animation:breathe 2.4s infinite}
+  .view-bar .vfps{margin-left:auto;font-variant-numeric:tabular-nums;color:#8b93b5;font-size:11.5px}
+  .view-bar .tag-live{
+    font-size:11px;letter-spacing:1px;padding:2px 8px;border-radius:999px;
+    border:1px solid rgba(163,230,53,.35);color:#d9f99d;background:rgba(163,230,53,.1);
+    opacity:0;transition:.3s;
+  }
+  .view-bar.live .tag-live{opacity:1}
+
+  /* ==========================================================
+     v2：待机 / 演示 两种状态
+     待机时整页只有一句话和一个按钮 —— 什么都没在跑，就不该有东西在动
+     ========================================================== */
+  body[data-mode="idle"] .stage,
+  body[data-mode="idle"] .preview-flag{display:none!important}
+
+  .idle{
+    position:fixed;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(120% 80% at 50% -10%,#151b2f 0%,#0a0c16 55%,#05060c 100%);
+  }
+  body[data-mode="running"] .idle{display:none}
+  .idle-inner{max-width:520px;text-align:center;padding:0 28px}
+  .idle-mark{
+    width:74px;height:74px;margin:0 auto 26px;border-radius:50%;
+    border:1px solid rgba(163,230,53,.3);display:grid;place-items:center;
+    color:var(--lime);font-size:28px;
+    background:rgba(163,230,53,.06);
+  }
+  .idle h1{font-size:31px;letter-spacing:.5px;color:#f4f7ff;font-weight:600}
+  .idle h1 span{display:block;margin-top:10px;font-size:11.5px;letter-spacing:5px;color:var(--dim);font-weight:400}
+  .idle-lead{margin-top:24px;font-size:14px;line-height:1.95;color:#cbd5e8}
+  .start-btn{
+    margin-top:32px;padding:15px 48px;border-radius:999px;border:0;cursor:pointer;
+    font-family:inherit;font-size:15px;font-weight:650;letter-spacing:3px;color:#0b1206;
+    background:#d9f99d;
+    box-shadow:0 10px 24px -12px rgba(0,0,0,.8);
+    transition:transform .18s,background .18s;
+  }
+  .start-btn:hover{transform:translateY(-1px);background:#e6ffb5}
+  .start-btn:active{transform:translateY(1px)}
+  .start-btn[disabled]{opacity:.5;cursor:default;transform:none;box-shadow:none}
+  .idle-note{margin-top:24px;font-size:12px;line-height:2;color:var(--dim)}
+  .idle-meta{margin-top:16px;font-size:11.5px;line-height:1.8;color:#7c8aa5;min-height:18px}
+  .idle-link{
+    margin-top:20px;background:none;border:0;padding:0;color:#8fa0bb;font-size:12px;
+    font-family:inherit;cursor:pointer;text-decoration:underline;text-underline-offset:4px;
+  }
+  .idle-link:hover{color:#e2e8f0}
+
+  /* ---------- 演示时：顶部只留三样东西 ---------- */
+  .bar-right{display:flex;align-items:center;gap:10px;margin-left:auto}
+  .live{
+    display:flex;align-items:center;gap:8px;padding:7px 14px;border-radius:999px;
+    cursor:pointer;transition:background .2s,border-color .2s;
+    background:rgba(163,230,53,.09);border:1px solid rgba(163,230,53,.28);
+    font-variant-numeric:tabular-nums;font-size:12.5px;color:#e4ffc4;letter-spacing:1px;
+  }
+  .live:hover{background:rgba(163,230,53,.16);border-color:rgba(163,230,53,.5)}
+  .livedot{width:7px;height:7px;border-radius:50%;background:var(--lime);animation:breathe 2.4s ease-out infinite}
+  .ctl{
+    padding:8px 18px;border-radius:999px;cursor:pointer;font-family:inherit;font-size:12.5px;
+    background:rgba(255,255,255,.06);border:1px solid var(--line);color:#dbe4f7;
+    transition:background .2s,border-color .2s,color .2s;
+  }
+  .ctl:hover{background:rgba(255,255,255,.12);color:#fff}
+  a.ctl{display:inline-flex;align-items:center;text-decoration:none;cursor:pointer}
+  .ctl.danger{border-color:rgba(251,113,133,.35);color:#ffd9de;background:rgba(251,113,133,.1)}
+  .ctl.danger:hover{background:rgba(251,113,133,.2);border-color:rgba(251,113,133,.6)}
+  .bar-right .clock{display:none}   /* 抽屉里有时钟，顶上不用再摆一个 */
+
+  /* ---------- 三层结构 ---------- */
+  .main-v2{
+    display:grid;gap:16px;flex:1;min-height:0;
+    grid-template-columns:minmax(300px,.85fr) 1.7fr;
+    grid-template-rows:auto auto;
+    grid-template-areas:
+      "relax view"
+      "guide guide";
+  }
+  .main-v2 > .relax{grid-area:relax;min-height:430px;display:flex;flex-direction:column}
+  .main-v2 > .view{grid-area:view;min-height:430px}
+  .main-v2 > .guide{grid-area:guide}
+  .main-v2 > .chan,
+  .main-v2 > .world,
+  .main-v2 > .wthr,
+  .main-v2 > .strat,
+  .main-v2 > .rec{display:none}
+
+  body.detail-open .main-v2{
+    grid-template-rows:auto auto auto auto auto;
+    grid-template-areas:
+      "relax view"
+      "guide guide"
+      "chan chan"
+      "world wthr"
+      "strat rec";
+  }
+  body.detail-open .main-v2 > .chan,
+  body.detail-open .main-v2 > .world,
+  body.detail-open .main-v2 > .wthr,
+  body.detail-open .main-v2 > .strat,
+  body.detail-open .main-v2 > .rec{display:block}
+
+  /* 第二层：那句话应该比卡片更显眼 */
+  .main-v2 > .guide .q{font-size:19px;line-height:1.95;color:#eef3ff;font-weight:500}
+  .main-v2 > .guide .cue{font-size:13px;margin-top:10px}
+  .main-v2 .chan .demo-chan{display:none;font-size:13px;line-height:2.05;color:#cbd5e8;padding:6px 0 10px}
+  body.demo .main-v2 .chan .chan-grid,
+  body.demo .main-v2 .chan .legend{display:none}
+  body.demo .main-v2 .chan .demo-chan{display:block}
+
+  /* ---------- 抽屉里的六个页签 ---------- */
+  .tabs{display:flex;flex-wrap:wrap;gap:6px;padding:0 22px 14px}
+  .tabs .pill{
+    padding:6px 11px;border-radius:9px;font-size:11.5px;gap:6px;
+    background:rgba(255,255,255,.04);
+  }
+  .tabs .pill::after{display:none}
+  .tabs .pill.active{border-color:rgba(34,211,238,.5);background:rgba(34,211,238,.13);color:#e6fdff}
+
+  @media (max-width:1100px){
+    .main-v2,body.detail-open .main-v2{
+      grid-template-columns:1fr;
+      grid-template-areas:"relax" "view" "guide" "chan" "world" "wthr" "strat" "rec";
+    }
+    .main-v2 > .relax,.main-v2 > .view{min-height:300px}
+  }
+
+  /* ---------- 顶部灯：全部可点 ---------- */
+  .pill,.clock,#demoBadge{cursor:pointer;transition:border-color .25s,background .25s,color .25s}
+  .pill:hover,.clock:hover{border-color:rgba(34,211,238,.45);background:rgba(34,211,238,.1);color:#e2f6ff}
+  #demoBadge:hover{background:rgba(251,191,36,.2)!important;border-color:rgba(251,191,36,.65)!important}
+  .pill::after{content:"›";font-size:12px;opacity:.3;margin-left:1px}
+  .pill:hover::after{opacity:.75}
+
+  /* ---------- 右侧抽屉（点开任意一盏灯） ---------- */
+  .drawer-mask{
+    position:fixed;inset:0;background:rgba(4,6,14,.55);
+    -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);
+    opacity:0;pointer-events:none;transition:opacity .28s;z-index:50;
+  }
+  .drawer-mask.show{opacity:1;pointer-events:auto}
+  .drawer{
+    position:fixed;top:0;right:0;height:100%;width:min(480px,94vw);
+    background:linear-gradient(170deg,rgba(19,23,42,.975),rgba(9,11,22,.99));
+    border-left:1px solid rgba(120,140,220,.22);
+    box-shadow:-30px 0 80px -30px rgba(0,0,0,.9);
+    transform:translateX(102%);transition:transform .32s cubic-bezier(.22,1,.36,1);
+    z-index:51;display:flex;flex-direction:column;
+  }
+  .drawer.show{transform:none}
+  .drawer-head{
+    display:flex;align-items:flex-start;gap:12px;
+    padding:22px 22px 16px;border-bottom:1px solid rgba(255,255,255,.07);
+  }
+  .drawer-head h3{font-size:16px;font-weight:650;color:#e8edff;letter-spacing:.4px}
+  .drawer-head p{margin-top:6px;font-size:12px;color:var(--dim);line-height:1.7}
+  .drawer-x{
+    margin-left:auto;flex:none;width:30px;height:30px;border-radius:9px;
+    border:1px solid var(--line);background:rgba(255,255,255,.05);
+    color:#cbd5ff;font-size:16px;line-height:1;cursor:pointer;
+    display:grid;place-items:center;font-family:inherit;
+  }
+  .drawer-x:hover{background:rgba(244,114,182,.16);border-color:rgba(244,114,182,.4)}
+  .drawer-body{padding:18px 22px 34px;overflow-y:auto;flex:1}
+
+  .verdict{
+    border-radius:14px;padding:13px 15px;font-size:12.5px;line-height:1.8;
+    margin-bottom:20px;border:1px solid;
+  }
+  .verdict.ok{background:rgba(163,230,53,.09);border-color:rgba(163,230,53,.3);color:#e9ffd4}
+  .verdict.warn{background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.32);color:#fff3cf}
+  .verdict.bad{background:rgba(244,114,182,.1);border-color:rgba(244,114,182,.32);color:#ffe2ec}
+
+  .sec-title{
+    font-size:11px;letter-spacing:1.4px;color:var(--dim);
+    margin:22px 0 10px;text-transform:uppercase;
+  }
+  .sec-title:first-child{margin-top:0}
+  .kv{display:grid;grid-template-columns:104px 1fr;gap:10px 14px;font-size:12.5px;margin:0}
+  .kv dt{color:var(--dim)}
+  .kv dd{margin:0;color:#e2e8ff;word-break:break-word;font-variant-numeric:tabular-nums}
+
+  .rows{display:flex;flex-direction:column;gap:8px}
+  .row{
+    display:flex;align-items:center;gap:10px;font-size:12.5px;padding:9px 12px;
+    border-radius:11px;background:rgba(255,255,255,.038);
+    border:1px solid rgba(255,255,255,.06);
+  }
+  .row .who{font-weight:600;color:#dbe7ff}
+  .row .meta{margin-left:auto;color:var(--dim);font-size:11.5px;font-variant-numeric:tabular-nums;text-align:right;line-height:1.5}
+  .row .tagr{
+    font-size:11px;letter-spacing:.6px;padding:2px 7px;border-radius:999px;
+    border:1px solid rgba(255,255,255,.14);color:var(--dim);
+  }
+  .row .tagr.agent{border-color:rgba(125,211,252,.4);color:#dff2ff;background:rgba(125,211,252,.1)}
+  .row .tagr.unity{border-color:rgba(34,211,238,.45);color:#cffafe;background:rgba(34,211,238,.12)}
+  .row .tagr.console{border-color:rgba(163,230,53,.4);color:#e9ffd4;background:rgba(163,230,53,.1)}
+
+  .chlist{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+  .chlist i{
+    font-style:normal;font-size:11px;padding:5px 7px;border-radius:7px;
+    background:rgba(255,255,255,.04);display:flex;justify-content:space-between;
+    gap:5px;color:var(--dim);font-variant-numeric:tabular-nums;
+  }
+  .chlist i b{font-weight:600;color:#dbe7ff}
+  .chlist i.ok{background:rgba(163,230,53,.11);color:#d9f99d}
+  .chlist i.ok b{color:#ecfccb}
+  .chlist i.bad{background:rgba(244,114,182,.12);color:#fbcfe8}
+
+  .quote{
+    font-size:13px;line-height:1.95;color:#e6ecff;
+    background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);
+    border-radius:14px;padding:14px 16px;
+  }
+  .quote .cue{display:block;margin-top:10px;font-size:12.5px;color:#a8c8dd}
+  .empty-note{font-size:12.5px;color:var(--dim);line-height:1.9;padding:12px 0}
+
+  /* ---------- 预览模式水印 ---------- */
+  .preview-flag{
+    position:fixed;left:50%;bottom:18px;transform:translateX(-50%);
+    font-size:11.5px;letter-spacing:1px;color:#fde68a;
+    background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.35);
+    padding:7px 16px;border-radius:999px;backdrop-filter:blur(10px);display:none;z-index:9;
+  }
+  .preview-flag.show{display:block}
+
+  @media (max-width:1180px){
+    main{grid-template-columns:repeat(6,1fr);grid-template-rows:auto;
+      grid-template-areas:
+        "relax relax chan chan chan chan"
+        "world world world wthr wthr wthr"
+        "view view view view view view"
+        "guide guide guide guide strat rec";}
+  }
+  @media (max-width:820px){
+    body{padding:18px 14px 28px}
+    main{grid-template-columns:1fr;grid-template-rows:auto;
+      grid-template-areas:"relax" "chan" "view" "world" "wthr" "guide" "strat" "rec"}
+    .view{min-height:240px}
+    .brand h1{font-size:24px}
+  }
+
+  /* ---------- 设备连接 ---------- */
+  .devdot{width:7px;height:7px;border-radius:50%;background:#8b93a8;display:inline-block;
+    margin-right:7px;vertical-align:1px;box-shadow:0 0 0 3px rgba(255,255,255,.04)}
+  .devdot.real{background:var(--green);box-shadow:0 0 10px rgba(127,196,90,.7)}
+  .devdot.demo{background:var(--amber)}
+  #devWrap,#trWrap{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;
+    background:rgba(4,6,12,.62);backdrop-filter:blur(8px)}
+  #devWrap[hidden],#trWrap[hidden]{display:none}
+  .devbox{width:min(540px,92vw);border-radius:20px;padding:22px 24px 18px;
+    background:linear-gradient(160deg,#111827,#0b0f1a);border:1px solid var(--line);
+    box-shadow:0 40px 90px -40px #000}
+  .devhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+  .devhead h3{margin:0;font-size:16px;font-weight:600;letter-spacing:1.5px}
+  .devx{background:none;border:0;color:var(--dim);font-size:22px;line-height:1;cursor:pointer;padding:0 4px}
+  .devrow{display:flex;justify-content:space-between;gap:16px;padding:7px 0;
+    border-bottom:1px dashed rgba(255,255,255,.07);font-size:13px}
+  .devrow .k{color:var(--dim);white-space:nowrap}
+  .devrow .v{text-align:right;color:#e7edfb}
+  .mono{font-variant-numeric:tabular-nums}
+  .devgrid{display:grid;grid-template-columns:1.3fr .75fr 1.5fr;gap:10px;margin:15px 0 0}
+  .devgrid label{display:flex;flex-direction:column;gap:6px;font-size:11.5px;color:var(--dim)}
+  .devgrid input,.devgrid select{background:rgba(255,255,255,.05);border:1px solid var(--line);
+    color:var(--ink);border-radius:10px;padding:9px 10px;font-size:13.5px;font-family:inherit;outline:none;width:100%}
+  .devgrid input:focus,.devgrid select:focus{border-color:rgba(94,200,221,.55)}
+  .devhint{font-size:12px;line-height:1.85;color:#8fa0bb;margin:13px 0}
+  .devacts{display:flex;gap:8px}
+  .devacts button{flex:1;padding:10px 12px;border-radius:11px;border:1px solid var(--line);
+    background:rgba(255,255,255,.05);color:var(--ink);font-size:13px;font-family:inherit;cursor:pointer}
+  .devacts button.primary{background:rgba(94,200,221,.16);border-color:rgba(94,200,221,.45)}
+  .devacts button:disabled{opacity:.45;cursor:default}
+  .devmsg{margin:11px 0 0;font-size:12.5px;line-height:1.8;min-height:18px;color:var(--amber)}
+  .devmsg.ok{color:var(--green)}
+
+  /* ---------- 趋势 ---------- */
+  .trbars{display:flex;align-items:flex-end;gap:7px;height:96px;margin:16px 0 4px}
+  .trbar{flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:5px;height:100%}
+  .trbar i{display:block;border-radius:5px 5px 2px 2px;min-height:3px;
+    background:linear-gradient(180deg,rgba(94,200,221,.85),rgba(94,200,221,.22))}
+  .trbar.demo i{background:linear-gradient(180deg,rgba(251,191,36,.7),rgba(251,191,36,.16))}
+  .trbar b{font-size:10px;color:var(--dim);font-weight:400;text-align:center;white-space:nowrap}
+  .trlvl{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11.5px;
+    border:1px solid var(--line);vertical-align:2px;margin-left:10px}
+  .trlvl.steady{color:var(--green);border-color:rgba(127,196,90,.4);background:rgba(127,196,90,.1)}
+  .trlvl.mild{color:var(--amber);border-color:rgba(251,191,36,.4);background:rgba(251,191,36,.1)}
+  .trlvl.watch{color:var(--red);border-color:rgba(251,113,133,.45);background:rgba(251,113,133,.12)}
+  .trlvl.quality{color:#c4b5fd;border-color:rgba(196,181,253,.4);background:rgba(196,181,253,.1)}
+  .trlist{margin:10px 0 0;padding-left:18px;font-size:12.5px;line-height:1.9;color:var(--amber)}
+  .trlist li{margin:2px 0}
+  .tradvice{font-size:12.5px;line-height:1.9;color:#cbd5e8;margin:10px 0 0}
+  .trnote{font-size:11.5px;line-height:1.8;color:#7c8aa5;margin:10px 0 0}
+
+  /* ---------- 随访量表 ---------- */
+  #scWrap{position:fixed;inset:0;z-index:91;display:flex;align-items:center;justify-content:center;
+    background:rgba(4,6,12,.62);backdrop-filter:blur(8px)}
+  #scWrap[hidden]{display:none}
+  .scbox{width:min(720px,94vw);max-height:90vh;display:flex;flex-direction:column}
+  .scbody{overflow-y:auto;flex:1;padding-right:8px;margin-top:6px}
+  .scsec{margin:6px 0 14px}
+  .scsec h4{margin:0 0 2px;font-size:12px;letter-spacing:1.2px;color:var(--dim);font-weight:600}
+  .scq{padding:9px 0;border-bottom:1px dashed rgba(255,255,255,.07)}
+  .scq .qt{display:flex;gap:8px;align-items:flex-start;font-size:13px;line-height:1.7}
+  .scq .qn{color:var(--dim);min-width:14px;text-align:right}
+  .scq .qx{flex:1}
+  .scsay{background:none;border:1px solid var(--line);border-radius:8px;color:var(--dim);
+    font-size:11.5px;padding:3px 8px;cursor:pointer;font-family:inherit;white-space:nowrap}
+  .scopts{display:flex;flex-wrap:wrap;gap:6px;margin:7px 0 0 22px}
+  .scopt{padding:6px 11px;border-radius:999px;border:1px solid var(--line);
+    background:rgba(255,255,255,.04);color:var(--ink);font-size:12.5px;cursor:pointer;font-family:inherit}
+  .scopt.on{background:rgba(94,200,221,.18);border-color:rgba(94,200,221,.55)}
+  .scpid{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--dim);margin:4px 0 10px}
+  .scpid input{background:rgba(255,255,255,.05);border:1px solid var(--line);color:var(--ink);
+    border-radius:9px;padding:7px 10px;font-size:13px;font-family:inherit;outline:none;width:140px}
+  .sclvl{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11.5px;
+    border:1px solid var(--line);vertical-align:2px;margin-left:10px}
+  .sclvl.green{color:var(--green);border-color:rgba(127,196,90,.4);background:rgba(127,196,90,.1)}
+  .sclvl.yellow{color:var(--amber);border-color:rgba(251,191,36,.4);background:rgba(251,191,36,.1)}
+  .sclvl.red{color:var(--red);border-color:rgba(251,113,133,.45);background:rgba(251,113,133,.12)}
+  .scres{margin-top:12px;padding:12px 14px;border-radius:14px;border:1px solid var(--line);
+    background:rgba(255,255,255,.03)}
+  .scres .h{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+    font-size:13px;color:#e7edfb}
+  .scres .h b{font-size:15px}
+  .scres .h span{font-size:11.5px;color:var(--dim)}
+  .scact{font-size:13px;line-height:1.85;color:#dbe4f5;margin:8px 0 0}
+  
+  /* ==========================================================
+     v4 工作台布局（OBS / 达芬奇 / Figma 的多面板结构）
+     1px 分隔线 · 面板标题条 · 右侧全高检查器 · 底部停靠区
+     ========================================================== */
+  :root{
+    --panel:#0d1117; --panel-hd:#12171f; --bd:#1b222d; --bd-soft:#151b24;
+    --fg-dim:#78829a; --fg-2:#c3cbdb;
+  }
+  body{padding:0;overflow:hidden;display:flex;flex-direction:column;height:100vh}
+  .aurora{opacity:.55}
+
+  header{
+    height:46px;flex:0 0 46px;margin:0;padding:0 14px;
+    display:flex;align-items:center;gap:16px;flex-wrap:nowrap;
+    background:var(--panel-hd);border-bottom:1px solid var(--bd);
+  }
+  .brand{gap:10px;align-items:center;min-width:0}
+  .brand h1{font-size:13px;font-weight:600;letter-spacing:.1px}
+  .brand span{font-size:11px;color:var(--fg-dim);letter-spacing:0}
+  .bar-right{gap:4px;margin-left:auto;flex-wrap:nowrap}
+  .ctl{height:28px;padding:0 10px;border-radius:6px;font-size:12px;
+    border:1px solid var(--bd);background:#161c25;color:var(--fg-2);gap:6px}
+  .ctl:hover{background:#1c2430;border-color:#2a3444;color:#fff}
+  .ctl.ghost{background:transparent;border-color:transparent;color:var(--fg-dim)}
+  .ctl.ghost:hover{background:#1a212c;border-color:var(--bd);color:#fff}
+  .ctl.ghost.icon{font-size:14px;padding:0 9px;letter-spacing:0}
+  .ctl.danger{background:#3a1a21;border-color:#5d2833;color:#ffa2b0;font-weight:500}
+  .ctl.danger:hover{background:#4a2029;color:#ffc2cc}
+  .live{height:28px;padding:0 10px;border-radius:6px;font-size:12px;
+    font-variant-numeric:tabular-nums;background:#161c25;border:1px solid var(--bd)}
+  .more-pop{min-width:180px;padding:4px;border-radius:8px;background:#151b25;
+    border:1px solid var(--bd);box-shadow:0 16px 40px -12px rgba(0,0,0,.9)}
+  .mitem{padding:8px 10px;border-radius:5px;font-size:12.5px;color:var(--fg-2)}
+  .mitem:hover{background:#202836;color:#fff}
+
+  .stage{display:flex;flex-direction:column;flex:1;min-height:0;padding:0}
+  .main-v2{
+    flex:1;min-height:0;display:grid;gap:1px;padding:0;
+    grid-template-columns:minmax(0,1fr) 340px;
+    grid-template-rows:minmax(0,1fr) 230px;
+    grid-template-areas:"viewport inspector" "dock inspector";
+    background:var(--bd);
+  }
+  .viewport{grid-area:viewport;display:flex;min-width:0;min-height:0;background:#05070d}
+  .inspector{grid-area:inspector;display:flex;flex-direction:column;gap:1px;min-height:0;background:var(--bd)}
+  .dock{grid-area:dock;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);
+    gap:1px;min-height:0;background:var(--bd)}
+  .extra{display:none;grid-area:extra;grid-template-columns:1fr 1fr;gap:1px;background:var(--bd)}
+  body.detail-open .extra{display:grid}
+  body.detail-open .main-v2{
+    grid-template-rows:minmax(0,1fr) 200px auto;
+    grid-template-areas:"viewport inspector" "dock inspector" "extra extra";
+    overflow:auto;
+  }
+
+  .card{
+    border-radius:0;border:0;background:var(--panel);
+    backdrop-filter:none;box-shadow:none;overflow:hidden;
+    padding:0 12px 12px;position:relative;min-height:0;
+  }
+  .card > h2{
+    margin:0 -12px 10px;height:27px;padding:0 12px;
+    display:flex;align-items:center;gap:7px;
+    font-size:10.5px;font-weight:600;letter-spacing:.9px;text-transform:uppercase;
+    color:var(--fg-dim);background:var(--panel-hd);border-bottom:1px solid var(--bd-soft);
+    white-space:nowrap;overflow:hidden;
+  }
+  .card > h2 em{font-size:10.5px;font-weight:400;letter-spacing:0;text-transform:none;
+    color:#556074;font-style:normal}
+  .card > h2 .tag{margin-left:auto;font-size:10px;padding:1px 6px;letter-spacing:0;text-transform:none}
+
+  .viewport > .view{flex:1;min-width:0;padding:0;background:#05070d}
+  .view img{object-fit:contain;border-radius:0}
+  .view-empty{gap:10px}
+  .view-empty .t{font-size:14px}
+  .view-empty .d{font-size:11.5px;max-width:340px}
+  .launch-btn{height:32px;padding:0 16px;border-radius:6px;font-size:12.5px}
+  .view-bar{font-size:11px}
+
+  .inspector > .relax{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;padding-bottom:14px}
+  .inspector > .world,.inspector > .wthr{flex:0 0 auto}
+  .relax .ring{width:128px;height:128px;margin:2px auto 10px}
+  .relax .state-word{font-size:15px;margin-top:2px}
+  .relax .sub{font-size:11px;margin-top:4px;margin-bottom:10px}
+  .axis-row{font-size:11px}
+  .world .bar-row,.axis-row{gap:8px}
+  .wthr-row{gap:6px;min-height:70px}
+  .wcard{border-radius:4px}
+  .wcard .nm{font-size:11px}
+  .wcard .en{font-size:8.5px}
+
+  .dock > .guide{padding:0 14px 12px}
+  .dock .guide .q{font-size:14px;line-height:1.7;margin-top:6px;
+    display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+  .dock .guide .cue{font-size:11px;margin-top:6px}
+  .dock > .chan{padding:0 12px 10px}
+  .chan-grid{gap:5px}
+  .demo-chan{font-size:10.5px;line-height:1.6}
+  .legend{font-size:10px}
+
+  .val,.vl,.rec-cell .v,#liveTime,#vFps{font-variant-numeric:tabular-nums}
+
+  /* ---------- 首页：左右分栏的入口 ---------- */
+  .idle{position:fixed;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;
+    padding:0;background:radial-gradient(90% 70% at 30% 20%,#121a2b 0%,#080b12 60%,#05070c 100%)}
+  .idle-inner{
+    width:100%;max-width:900px;display:grid;grid-template-columns:minmax(0,1fr) 288px;
+    gap:1px;background:var(--bd);border:1px solid var(--bd);margin:0 auto;
+  }
+  .idle-main{padding:46px 46px 42px;text-align:left;background:var(--panel-hd);min-width:0}
+  .idle-mark{width:38px;height:38px;margin:0 0 22px;border-radius:9px;
+    display:grid;place-items:center;font-size:17px;
+    border:1px solid rgba(163,230,53,.32);background:rgba(163,230,53,.07);color:var(--lime)}
+  .idle h1{font-size:27px;font-weight:600;letter-spacing:.1px;color:#f2f5fb}
+  .idle h1 span{margin-top:7px;font-size:10px;letter-spacing:4.5px;color:#6b768d;font-weight:400}
+  .idle-lead{margin-top:18px;font-size:13.5px;line-height:1.85;color:#aab4c8;max-width:420px}
+  .idle .start-btn{margin-top:24px;height:40px;min-width:150px;padding:0 22px;
+    border-radius:6px;font-size:13.5px;font-weight:500}
+  .idle .idle-note{margin-top:16px;font-size:11px;line-height:1.8;color:#69738a;max-width:420px}
+  .idle .idle-meta{margin-top:10px;font-size:10.5px;color:#5b6478}
+  .idle-links{display:flex;flex-direction:column;gap:1px;align-self:stretch;background:var(--bd)}
+  .idle-links .idle-link{
+    flex:1;display:flex;flex-direction:column;justify-content:center;gap:3px;
+    padding:0 22px;border:0;border-radius:0;background:var(--panel-hd);
+    color:var(--fg-2);text-align:left;transition:background .15s;cursor:pointer;
+  }
+  .idle-links .idle-link b{font-size:11px;font-weight:600;letter-spacing:.6px;
+    text-transform:uppercase;color:#7b879f}
+  .idle-links .idle-link span{font-size:12.5px;color:#aab4c8}
+  .idle-links .idle-link:hover{background:#1a2231}
+  .idle-links .idle-link:hover span{color:#fff}
+
+  /* 这两个面板原来各自带 grid-area，会把 dock 撑出隐式轨道 */
+  .dock > .guide,.dock > .chan{grid-area:auto;min-width:0}
+  .inspector > .relax{justify-content:flex-start}
+  .inspector > .relax .ring{margin-top:auto}
+  .inspector > .relax .axis-row{margin-bottom:auto}
+
+  /* 圆环放大，别在 638 高的面板里显得空 */
+  .inspector > .relax .ring{width:164px;height:164px;margin-top:auto}
+  .inspector > .relax .state-word{font-size:16px}
+  /* 电极卡在 230 高的停靠区里放不下半球/频段两块，收进「看细节」 */
+  .dock > .chan .hemi,.dock > .chan .bands{display:none}
+  body.detail-open .dock > .chan .hemi,
+  body.detail-open .dock > .chan .bands{display:block}
+</style>
+</head>
+<body data-mode="idle">
+<div class="aurora"><i></i><i></i><i></i><i></i></div>
+
+<section class="idle" id="idle">
+  <div class="idle-inner">
+      <div class="idle-main">
+    <div class="idle-mark">◍</div>
+    <h1>脑境疗愈<span>N E U R O B L O O M</span></h1>
+    <p class="idle-lead">现在什么都没在跑。<br>不采集、不渲染、不传画面，电脑是安静的。</p>
+    <button class="start-btn" id="startBtn">开始演示</button>
+    <p class="idle-note">点一下会启动 Unity 画面和一段模拟脑电，跑满 3 分钟自己停。<br>接了真电极的话，这里读的就是你的脑电。</p>
+    <div class="idle-meta" id="idleMeta">建议演示时插上电源。</div>
+      </div>
+    <div class="idle-links">
+      <button class="idle-link" id="idleDev"><b>设备</b><span>检查连接</span></button>
+      <button class="idle-link" id="idleStatus"><b>系统</b><span>查看运行状态</span></button>
+      <button class="idle-link" id="idleScale"><b>随访</b><span>做一次情绪量表</span></button>
+    </div>
+    </div>
+  </div>
+</section>
+
+<!-- 设备连接：用户不需要去终端改环境变量，IP / 端口 / 板卡都在这儿 -->
+<div id="devWrap" hidden>
+  <div class="devbox" role="dialog" aria-modal="true" aria-label="采集设备">
+    <div class="devhead">
+      <h3>采集设备</h3>
+      <button class="devx" id="devClose" aria-label="关闭">&times;</button>
+    </div>
+    <div class="devrow"><span class="k">连接状态</span><span class="v" id="devState">未连接</span></div>
+    <div class="devrow"><span class="k">板卡</span><span class="v" id="devBoardName">16 通道 · Cyton+Daisy / WiFi</span></div>
+    <div class="devrow"><span class="k">接口</span><span class="v mono" id="devIface">BrainFlow · 板子 192.168.4.1 · 本机口 6677</span></div>
+    <div class="devgrid">
+      <label>IP 地址<input id="devIp" value="192.168.4.1" inputmode="decimal" autocomplete="off"></label>
+      <label title="本机（电脑）的监听端口，不是板子的端口">本机端口<input id="devPort" value="6677" inputmode="numeric" autocomplete="off"></label>
+      <label>板卡型号<select id="devBoardSel">
+        <option value="6">16 通道（Daisy / WiFi）</option>
+        <option value="5">8 通道（WiFi）</option>
+        <option value="0">蓝牙 / 串口</option>
+      </select></label>
+    </div>
+    <p class="devhint" id="devHint">先连 WiFi「ExpandableEEGAP」（密码 abcd1234），再点连接。</p>
+    <div class="devacts">
+      <button id="devProbe">检测</button>
+      <button id="devConn" class="primary">连接设备</button>
+      <button id="devDemo">用合成板</button>
+    </div>
+    <p class="devmsg" id="devMsg"></p>
+  </div>
+</div>
+
+<div id="trWrap" hidden>
+  <div class="devbox" role="dialog" aria-modal="true" aria-label="训练趋势">
+    <div class="devhead">
+      <h3>训练趋势<span class="trlvl" id="trLvl">—</span></h3>
+      <button class="devx" id="trClose" aria-label="关闭">&times;</button>
+    </div>
+    <div class="devrow"><span class="k">个人基线</span><span class="v" id="trBase">—</span></div>
+    <div class="devrow"><span class="k">最近三次</span><span class="v" id="trNow">—</span></div>
+    <div class="trbars" id="trBars"></div>
+    <ul class="trlist" id="trReasons"></ul>
+    <p class="tradvice" id="trAdvice">—</p>
+    <p class="trnote" id="trNote"></p>
+  </div>
+</div>
+
+<!-- 随访量表：不依赖脑电，没接电极也能做；做完和脑电趋势合起来给分层 -->
+<div id="scWrap" hidden>
+  <div class="devbox scbox" role="dialog" aria-modal="true" aria-label="情绪随访量表">
+    <div class="devhead">
+      <h3>情绪随访<span class="sclvl" id="scLvl">未评估</span></h3>
+      <button class="devx" id="scClose" aria-label="关闭">&times;</button>
+    </div>
+    <p class="trnote" id="scIntro">近两周的情况，凭感觉选就行，没有对错。做完会给出「低/中/高」三档随访建议。</p>
+    <div class="scbody">
+      <div class="scsec">
+        <h4>PHQ-2 初筛（两题）</h4>
+        <div id="scPhq2"></div>
+      </div>
+      <div class="scsec" id="scMoreWrap" hidden>
+        <h4>PHQ-9 完整量表（九题）</h4>
+        <div id="scPhq9"></div>
+        <h4 style="margin-top:14px">GAD-7 焦虑量表（七题）</h4>
+        <div id="scGad7"></div>
+      </div>
+      <div class="scpid">
+        <span>受试编号</span><input id="scPid" value="anon" maxlength="16" autocomplete="off">
+        <span>（只存编号和得分，别填姓名）</span>
+      </div>
+      <div class="scres" id="scRes" hidden></div>
+    </div>
+    <div class="devacts" style="margin-top:12px">
+      <button id="scMore">展开完整量表</button>
+      <button id="scReadAll">朗读题目</button>
+      <button id="scSubmit" class="primary">提交并出随访结论</button>
+    </div>
+    <p class="devmsg" id="scMsg"></p>
+  </div>
+</div>
+
+<div class="stage">
+<header>
+  <div class="brand">
+    <h1>NeuroBloom</h1>
+    <span>脑境疗愈 · 实时控制台</span>
+    <span id="demoBadge" style="display:none;color:#fde68a;border:1px solid rgba(251,191,36,.4);background:rgba(251,191,36,.1);padding:3px 10px;border-radius:999px;letter-spacing:1px;font-size:11px">合成板演示</span>
+  </div>
+  <div class="bar-right">
+      <div class="live" id="liveChip" title="点这里看系统状态"><span class="livedot"></span><span id="liveTime">00:00</span></div>
+      <button class="ctl ghost" id="devBtn" title="查看 / 连接采集设备">
+        <span class="devdot" id="devDot"></span><span id="devText">设备 · 未连接</span>
+      </button>
+      <button class="ctl ghost" id="scaleBtn" title="做一次情绪随访量表（PHQ-2 / PHQ-9 / GAD-7），结果与脑电趋势合并给建议">
+        <span id="scaleText">随访 · 未评估</span>
+      </button>
+      <div class="more-wrap">
+        <button class="ctl ghost icon" id="moreBtn" aria-label="更多" title="更多">···</button>
+        <div class="more-pop" id="morePop" hidden>
+          <a class="mitem" id="reportBtn" href="http://127.0.0.1:8765/report" target="_blank" rel="noopener">导出报告</a>
+          <button class="mitem" id="detailBtn">看细节</button>
+          <button class="mitem" id="voiceBtn" aria-pressed="false">语音 · 关</button>
+          <button class="mitem" id="trendBtn"><span id="trendText">趋势 · 读取中</span></button>
+        </div>
+      </div>
+      <button class="ctl danger" id="stopBtn">停止</button>
+      <div class="clock" id="clock">--:--:--</div>
+    </div>
+</header>
+
+<main class="main-v2">
+
+    <section class="viewport">
+<section class="card view">
+      <img id="sceneImg" alt="Unity 场景画面" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='9'%3E%3Crect width='16' height='9' fill='%2305060e'/%3E%3C/svg%3E" />
+      <div class="view-bar" id="viewBar">
+        <span class="vdot"></span><span id="vText">等待 Unity 画面</span>
+        <span class="tag-live">实时</span>
+        <span class="vfps" id="vFps">— fps</span>
+      </div>
+      <div class="view-empty" id="viewEmpty">
+        <div class="ringmini"></div>
+        <div class="t" id="emptyTitle">Unity 还没开始播放</div>
+        <div class="d" id="emptyDesc">点下面的按钮就会启动 Unity 画面，大约 5 秒。</div>
+        <button class="launch-btn" id="launchBtn">启动画面</button>
+      </div>
+    </section>
+    </section>
+
+    <aside class="inspector">
+<section class="card relax">
+      <h2>放松度 <em>现在有多松弛</em><span class="tag" id="goodTag">—</span></h2>
+      <div class="ring" id="ring">
+        <div class="core">
+          <div class="val" id="relaxVal">—</div>
+          <div class="cap">RELAX</div>
+        </div>
+      </div>
+      <div class="state-word bad" id="stateWord">等待数据</div>
+      <div class="sub" id="relaxSub">还没有收到脑电状态</div>
+      <div class="axis-row" title="β/θ 相对个人基线：越高越专注，和你放松不放松是两件事">
+        <div class="nm">专注 β/θ</div>
+        <div class="track"><div class="fill" id="fFocus"></div></div>
+        <div class="vl" id="vFocus">—</div>
+      </div>
+    </section>
+<section class="card world">
+      <h2>世界参数 <em>画面在听这四个数</em></h2>
+      <div class="bar-row"><div class="nm">阳光</div><div class="track"><div class="fill sun" id="fSun"></div></div><div class="vl" id="vSun">—</div></div>
+      <div class="bar-row"><div class="nm">雾</div><div class="track"><div class="fill fog" id="fFog"></div></div><div class="vl" id="vFog">—</div></div>
+      <div class="bar-row"><div class="nm">花开</div><div class="track"><div class="fill bloom" id="fBloom"></div></div><div class="vl" id="vBloom">—</div></div>
+      <div class="bar-row"><div class="nm">水晶</div><div class="track"><div class="fill crystal" id="fCrystal"></div></div><div class="vl" id="vCrystal">—</div></div>
+    </section>
+<section class="card wthr">
+      <h2>天气 <em>场景当前的样子</em></h2>
+      <div class="wthr-row">
+        <div class="wcard" data-w="sunny"><div class="sky"></div><div class="scrim"></div><div class="now">当前</div><div class="nm">晴</div><div class="en">SUNNY</div></div>
+        <div class="wcard" data-w="rainy"><div class="sky"></div><div class="scrim"></div><div class="now">当前</div><div class="nm">雨</div><div class="en">RAINY</div></div>
+        <div class="wcard" data-w="night"><div class="sky"></div><div class="scrim"></div><div class="now">当前</div><div class="nm">夜</div><div class="en">NIGHT</div></div>
+      </div>
+    </section>
+    </aside>
+
+    <section class="dock">
+<section class="card guide">
+      <h2>智能体引导语</h2>
+      <div class="q" id="guideText">这里会显示此刻对佩戴者说的那句话。等脑电判定进入有效状态后，智能体才开始说话。</div>
+      <div class="cue" id="guideCue"></div>
+    </section>
+<section class="card chan">
+      <h2>电极接触 <em>16 路单独看</em><span class="tag" id="chanTag">—</span></h2>
+      <div class="chan-grid" id="chanGrid"></div>
+      <div class="demo-chan">现在是<b>合成板</b>：没有真实电极，所以这一屏没有东西可看。<br>
+        接上真电极（或者打开回放）以后，这里会变成 16 个格子，每格一路，绿色的是能信任的。</div>
+      <div class="hemi" id="hemiBox">
+        <div class="hrow"><span class="nm">左半球 α</span><div class="track"><div class="fill hl" id="fLeft"></div></div><div class="vl" id="vLeft">—</div></div>
+        <div class="hrow"><span class="nm">右半球 α</span><div class="track"><div class="fill hr" id="fRight"></div></div><div class="vl" id="vRight">—</div></div>
+        <div class="li-line">不对称指数 <b id="vLi">—</b><span id="vLiHint">左右活动差距，越接近 0 越对称</span></div>
+      </div>
+      <div class="bands" id="bandBox"></div>
+      <div class="legend">
+        <span><u style="background:#a3e635"></u>合格</span>
+        <span><u style="background:#fbbf24"></u>偏高</span>
+        <span><u style="background:#fb7185"></u>不合格</span>
+        <span style="margin-left:auto">绿 = 可以信任这一路</span>
+      </div>
+    </section>
+    </section>
+
+    <section class="extra">
+<section class="card strat">
+      <h2>策略层 <em>每 20 秒一轮</em></h2>
+      <div class="big"><div class="r" id="roundIdx">R—</div><div class="p" id="stratName">等待开始</div></div>
+      <div class="mode" id="stratMode">还没进入判定</div>
+      <div class="round-track"><div class="round-fill" id="roundFill"></div></div>
+      <div class="hint">前 3 轮固定不干预，作为对照</div>
+    </section>
+<section class="card rec">
+      <h2>数据录制 <em>原始脑电落盘</em></h2>
+      <div class="rec-top">
+        <div class="rec-led" id="recLed"></div>
+        <div class="t" id="recTitle">未录制</div>
+        <div class="p" id="recDir">—</div>
+      </div>
+      <div class="rec-grid">
+        <div class="rec-cell"><div class="k">已录时长</div><div class="v" id="recSecs">0s</div></div>
+        <div class="rec-cell"><div class="k">文件数</div><div class="v" id="recChunks">0</div></div>
+        <div class="rec-cell"><div class="k">丢样</div><div class="v" id="recGaps">0</div></div>
+      </div>
+    </section>
+    </section>
+
+  </main>
+</div>
+
+<div class="preview-flag" id="previewFlag">预览数据 · 还没连上桥接，画面是演给你看的</div>
+
+<!-- 点开顶部任意一盏灯，右边滑出这个抽屉 -->
+<div class="drawer-mask" id="drawerMask"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+  <div class="drawer-head">
+    <div>
+      <h3 id="drawerTitle">详情</h3>
+      <p id="drawerSub">—</p>
+    </div>
+    <div class="tabs" id="drawerTabs">
+      <div class="pill" id="pBridge" data-topic="bridge"><span class="dot"></span>桥接</div>
+      <div class="pill" id="pEeg" data-topic="eeg"><span class="dot"></span>脑电</div>
+      <div class="pill" id="pWorld" data-topic="world"><span class="dot"></span>世界</div>
+      <div class="pill" id="pAgent" data-topic="agent"><span class="dot"></span>智能体</div>
+      <div class="pill" id="pSource" data-topic="source"><span class="dot"></span>来源</div>
+    </div>
+
+    <button class="drawer-x" id="drawerClose" title="关闭（Esc）">×</button>
+  </div>
+  <div class="drawer-body" id="drawerBody"></div>
+</aside>
+
+<script>
+/* ==========================================================
+   1. 配置
+   ========================================================== */
+const WS_URL = "ws://127.0.0.1:8765/ws/world";
+const VIDEO_URL = "ws://127.0.0.1:8765/ws/video/sub";   // Unity 画面（二进制 JPEG）
+const RECONNECT_MS = 1500;
+
+/* 判据（和 Python 端 analysis/alpha_beta_state.py 保持一致） */
+const FLAT_STD = 3, NOISY_STD = 300, SAT_MEAN = 2000;
+
+/* ==========================================================
+   2. 小工具
+   ========================================================== */
+const $ = (id) => document.getElementById(id);
+const clamp01 = (v) => Math.max(0, Math.min(1, v));
+const fmt = (v, d = 2) => (v === null || v === undefined || Number.isNaN(v)) ? "—" : Number(v).toFixed(d);
+
+/* ==========================================================
+   3. 通道格：先建 16 个空位，之后只改内容
+   ========================================================== */
+const chanGrid = $("chanGrid");
+const chips = [];
+for (let i = 0; i < 16; i++) {
+  const el = document.createElement("div");
+  el.className = "chip pending";
+  el.innerHTML = `<b>CH${i + 1}</b><s>—</s><i></i>`;
+  chanGrid.appendChild(el);
+  chips.push(el);
+}
+
+
+/* 顶栏「···」菜单 */
+const moreBtn = $("moreBtn"), morePop = $("morePop");
+if (moreBtn && morePop) {
+  moreBtn.addEventListener("click", (e) => { e.stopPropagation(); morePop.hidden = !morePop.hidden; });
+  morePop.addEventListener("click", (e) => e.stopPropagation());
+  document.addEventListener("click", () => { morePop.hidden = true; });
+}
+
+/* ==========================================================
+   4. 渲染：一次状态消息 = 一次全量刷新
+   ========================================================== */
+let lastAgentAt = 0;
+let lastRealAt = 0;   // 最后一次收到真实脑电状态的时刻
+let lastRoundStart = 0;
+
+const BAND_META = [
+  ["delta", "δ 1-4"], ["theta", "θ 4-8"], ["alpha", "α 8-13"],
+  ["beta", "β 13-30"], ["gamma", "γ 30-45"],
+];
+
+/* 左右半球：两根条按较大的一侧归一化，再加一个不对称指数。
+   指数是 (右-左)/(右+左)，-1~+1；正数=右边强，负数=左边强。 */
+function renderLateral(lr) {
+  const has = lr && typeof lr.li === "number";
+  if (!has) {
+    ["fLeft", "fRight"].forEach((id) => { $(id).style.width = "0"; });
+    ["vLeft", "vRight", "vLi"].forEach((id) => { $(id).textContent = "—"; });
+    $("vLiHint").textContent = "左右活动差距，越接近 0 越对称";
+    return;
+  }
+  const mx = Math.max(lr.left || 0, lr.right || 0, 1e-6);
+  $("fLeft").style.width = `${Math.max(3, (lr.left / mx) * 100)}%`;
+  $("fRight").style.width = `${Math.max(3, (lr.right / mx) * 100)}%`;
+  $("vLeft").textContent = Number(lr.left).toFixed(1);
+  $("vRight").textContent = Number(lr.right).toFixed(1);
+  $("vLi").textContent = `${lr.li > 0 ? "+" : ""}${Number(lr.li).toFixed(2)}`;
+  $("vLiHint").textContent = lr.notable
+    ? (lr.li > 0 ? "右侧偏强，留意左半球" : "左侧偏强，留意右半球")
+    : "两侧基本对称";
+}
+
+/* 五频带：高度按本窗口最大值归一化，避免 γ 把 α 压成一条线 */
+function renderBands(bands) {
+  const box = $("bandBox");
+  if (!box) return;
+  if (box.children.length !== BAND_META.length) {
+    box.innerHTML = BAND_META.map(([, label]) =>
+      `<div class="bd"><div class="bar"><i></i></div><b>—</b><span>${label}</span></div>`).join("");
+  }
+  const mx = Math.max(...BAND_META.map(([k]) => Number(bands[k]) || 0), 1e-6);
+  BAND_META.forEach(([k], i) => {
+    const cell = box.children[i];
+    const v = Number(bands[k]) || 0;
+    cell.querySelector("i").style.height = `${Math.max(2, (v / mx) * 100)}%`;
+    cell.querySelector("b").textContent = v >= 100 ? v.toFixed(0) : v.toFixed(1);
+  });
+}
+
+function renderState(m, isPreview) {
+  if (!isPreview) lastRealAt = Date.now();
+
+  /* --- 是合成板还是真设备 --- */
+  const isDemo = m.board_id === -1;
+  document.body.classList.toggle("demo", isDemo);
+  const badge = $("demoBadge");
+  if (isPreview) { badge.textContent = "预览数据"; badge.style.display = "inline-block"; }
+  else if (isDemo) { badge.textContent = "合成板演示"; badge.style.display = "inline-block"; }
+  else { badge.style.display = "none"; }
+
+  /* --- 放松度 --- */
+  const label = m.label || "";
+  const hasRelax = typeof m.relax === "number";
+  const ring = $("ring");
+
+  if (hasRelax) {
+    $("relaxVal").innerHTML = `${Math.round(m.relax * 100)}<small>%</small>`;
+    ring.style.setProperty("--p", clamp01(m.relax));
+    // 越紧绷越偏珊瑚红，越放松越偏青绿（与图例语义一致）
+    ring.style.setProperty("--c1", m.relax < 0.4 ? "#fb7185" : "#5ec8dd");
+    ring.style.setProperty("--c2", m.relax < 0.4 ? "#f472b6" : "#7fc45a");
+    ring.classList.add("bump");
+    setTimeout(() => ring.classList.remove("bump"), 460);
+  } else {
+    $("relaxVal").textContent = "—";
+    ring.style.setProperty("--p", 0);
+  }
+
+  const word = $("stateWord");
+  const dict = {
+    relaxed: ["放松", "relaxed"], tense: ["紧绷", "tense"],
+    neutral: ["平稳", "neutral"], calibrating: ["正在标定基线", "bad"],
+    invalid: ["信号无效", "bad"],
+  };
+  const w = dict[label] || ["等待数据", "bad"];
+  word.textContent = w[0];
+  word.className = "state-word " + w[1];
+
+  /* --- 副信息 --- */
+  const bits = [];
+  if (typeof m.n_good === "number") bits.push(`合格 <b>${m.n_good}</b>/16 路`);
+  if (typeof m.score === "number") bits.push(`α/β 相对基线 <b>${fmt(m.score, 2)}</b>`);
+  if (m.note) bits.push(/demo|合成/i.test(m.note) ? "演示数据，不是你的脑电" : m.note);
+  $("relaxSub").innerHTML = bits.length ? bits.join(" · ") : "还没有收到脑电状态";
+
+  /* --- 第二条轴：专注度（不参与放松度计算，独立显示） --- */
+  const hasFocus = typeof m.focus === "number" && isFinite(m.focus);
+  $("fFocus").style.width = hasFocus ? `${clamp01(m.focus) * 100}%` : "0";
+  $("vFocus").textContent = hasFocus ? `${Math.round(m.focus * 100)}%` : "—";
+
+  /* --- 左右半球 + 五频带 --- */
+  renderLateral(m.lr);
+  if (m.bands) renderBands(m.bands);
+
+  /* --- 通道 --- */
+  if (Array.isArray(m.channels) && m.channels.length) {
+    let ok = 0;
+    m.channels.slice(0, 16).forEach((c, i) => {
+      const el = chips[i];
+      if (!el) return;
+      const isOk = !!c.ok;
+      if (isOk) ok++;
+      let cls = "ok";
+      if (!isOk) cls = Math.abs(c.std) > NOISY_STD || Math.abs(c.mean) > SAT_MEAN ? "bad" : "warn";
+      el.className = "chip " + cls;
+      el.querySelector("b").textContent = `CH${c.i ?? i + 1}`;
+      el.querySelector("s").textContent = `${Math.round(c.std)} µV`;
+      // 条形长度按 std 对数映射：60µV 已经算"合格上限"，别让 1000µV 把格子撑爆
+      const ratio = clamp01(Math.log10(Math.max(1, Math.abs(c.std))) / Math.log10(NOISY_STD));
+      el.querySelector("i").style.width = `${Math.max(6, ratio * 100)}%`;
+    });
+    $("chanTag").textContent = `合格 ${ok}/16`;
+    $("goodTag").textContent = `${ok}/16 路可信任`;
+  } else {
+    chips.forEach((el) => { el.className = "chip pending"; el.querySelector("s").textContent = "—"; el.querySelector("i").style.width = "0"; });
+    $("chanTag").textContent = isDemo ? "合成板，没有真通道" : "还没有通道数据";
+    $("goodTag").textContent = "—";
+  }
+
+  /* --- 世界四键 --- */
+  const p = m.world_params || {};
+  setBar("Sun", p.sunlight); setBar("Fog", p.fog);
+  setBar("Bloom", p.bloom); setBar("Crystal", p.crystal);
+
+  /* --- 天气 --- */
+  let weather = m.weather;
+  if (!weather && hasRelax) {
+    weather = m.relax >= 0.65 ? "sunny" : (m.relax <= 0.35 ? "night" : "rainy");
+  }
+  // 场景里中间那档已经从「雾霾」换成「雨」，旧名字一律归到 rainy
+  if (weather === "hazy" || weather === "haze" || weather === "fog" || weather === "foggy") weather = "rainy";
+  document.querySelectorAll(".wcard").forEach((el) => {
+    el.classList.toggle("active", !!weather && el.dataset.w === weather);
+  });
+
+  /* --- 策略 --- */
+  if (typeof m.round === "number") {
+    $("roundIdx").textContent = `R${m.round}`;
+    if (m.round !== lastRoundStart) { lastRoundStart = m.round; }
+  }
+  if (m.strategy_name) $("stratName").textContent = m.strategy_name;
+  else if (m.strategy) $("stratName").textContent = m.strategy;
+  else $("stratName").textContent = label === "calibrating" ? "标定中，暂不干预" : "无策略";
+
+  const mode = $("stratMode");
+  if (m.null_arm === true) mode.innerHTML = `本轮 <b>不干预对照</b> · 画面照常跟脑电走`;
+  else if (m.modulated) mode.innerHTML = `本轮 <b>干预</b> · 只调制氛围，不替代脑电`;
+  else mode.textContent = "还没进入判定";
+
+  const rs = m.round_seconds || 20;
+  const prog = typeof m.round === "number" ? ((Date.now() / 1000) % rs) / rs : 0;
+  $("roundFill").style.width = `${prog * 100}%`;
+
+  /* --- 录制 --- */
+  const rec = m.rec || { on: false };
+  $("recLed").className = "rec-led" + (rec.on ? " on" : "");
+  $("recTitle").textContent = rec.on ? "正在录制" : "未录制";
+  $("recDir").textContent = rec.on ? (rec.dir || "") : "—";
+  $("recSecs").textContent = rec.on ? fmtTime(rec.seconds || 0) : "0s";
+  $("recChunks").textContent = rec.on ? (rec.chunks || 0) : 0;
+  $("recGaps").textContent = rec.on ? (rec.gaps || 0) : 0;
+
+  /* --- 顶部灯 --- */
+  setPill("pEeg", true, "脑电");
+  if (typeof m._clients === "number") {
+    // 桥接报的是 world 总线上的客户端数（Unity + 智能体 + 这个控制台）
+    setPill("pWorld", true, `世界 ${m._clients}`);
+  }
+  if (typeof m.board_id === "number") {
+    $("pEeg").lastChild.textContent = m.board_id === -1 ? "脑电 · 合成板" : `脑电 · 板卡 ${m.board_id}`;
+  }
+}
+
+function setBar(key, v) {
+  const val = (typeof v === "number") ? clamp01(v) : null;
+  $("f" + key).style.width = val === null ? "0%" : `${val * 100}%`;
+  $("v" + key).textContent = val === null ? "—" : val.toFixed(2);
+}
+
+function fmtTime(s) {
+  s = Math.round(s);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60), r = s % 60;
+  return `${m}m${String(r).padStart(2, "0")}s`;
+}
+
+function setPill(id, on, text) {
+  const el = $(id);
+  el.classList.toggle("on", on);
+  el.classList.toggle("off", !on);
+  if (text) {
+    // 只改最后一个文本节点，保住前面的小圆点
+    const nodes = [...el.childNodes].filter((n) => n.nodeType === 3);
+    if (nodes.length) nodes[nodes.length - 1].textContent = text;
+  }
+}
+
+/* ==========================================================
+   5. 智能体引导语
+   ========================================================== */
+/* 智能体只会发这四个（见 agent_service/prompts.py），别让英文漏到界面上 */
+const CUE_ZH = {
+  breathing: "跟着花慢慢呼吸",
+  encourage: "你已经做得很好，继续",
+  relax: "再松一点，别用力",
+  focus: "把注意力带回呼吸",
+};
+
+function cueZh(c) {
+  const k = String(c).trim().toLowerCase();
+  return CUE_ZH[k] || "顺着提示自然呼吸";
+}
+
+function renderGuidance(m) {
+  lastAgentAt = Date.now();
+  setPill("pAgent", true, "智能体");
+  const q = document.querySelector(".guide .q");
+  const text = m.script || m.text || "";
+  if (text && text !== q.textContent) {
+    q.classList.add("fade");
+    setTimeout(() => {
+      q.textContent = text;
+      q.classList.remove("fade");
+    }, 260);
+  }
+  if (m.cue) $("guideCue").innerHTML = `此刻建议：<b>${cueZh(m.cue)}</b>`;
+  speak(text);
+}
+
+/* ==========================================================
+   6. 连接桥接
+   ========================================================== */
+let ws = null;
+
+function connect() {
+  try { ws = new WebSocket(WS_URL); }
+  catch (e) { scheduleReconnect(); return; }
+
+  ws.onopen = () => {
+    setPill("pBridge", true, "桥接");
+    $("previewFlag").classList.remove("show");
+  };
+
+  ws.onmessage = (ev) => {
+    let m;
+    try { m = JSON.parse(ev.data); } catch { return; }
+    if (m.type === "plant") return;          // 播种回执：花已经种在画面里了，这里不用管
+    if (m.type === "guidance") renderGuidance(m);
+    else renderState(m);
+  };
+
+  ws.onclose = () => {
+    setPill("pBridge", false, "桥接");
+    setPill("pEeg", false, "脑电");
+    setPill("pWorld", false, "世界");
+    scheduleReconnect();
+  };
+
+  ws.onerror = () => { try { ws.close(); } catch {} };
+}
+
+let reconnectTimer = null;
+function scheduleReconnect() {
+  if (mode !== "running") return;      // 停了就别再偷偷重连
+  if (reconnectTimer) return;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connect();
+  }, RECONNECT_MS);
+}
+
+/* ==========================================================
+   6.5 Unity 画面：bridge 把 JPEG 原样转过来，直接贴到 <img> 上
+   —— 不解析、不重绘，浏览器解码 JPEG 比自己画还快
+   ========================================================== */
+let vws = null, vCount = 0, vLastCount = 0, vLastAt = 0;
+const vUrls = [];          // 正在用的几个 blob 地址，旧的延迟回收
+let viewState = "empty";   // empty | live | stalled
+
+const sceneImg = $("sceneImg");
+
+/* 点画面种花 —— 「手动互动」的主入口。
+   以前只能点 Unity 窗口，可那扇窗经常在后台或被人挡住，用户真正想点的是这一页。
+   画面是 object-fit:contain，上下（或左右）会留黑边，所以先把黑边扣掉再换算比例。 */
+function sceneUV(ev) {
+  const box = sceneImg.getBoundingClientRect();
+  const iw = sceneImg.naturalWidth || 0, ih = sceneImg.naturalHeight || 0;
+  if (!iw || !ih || !box.width || !box.height) return null;
+  const k = Math.min(box.width / iw, box.height / ih);
+  const w = iw * k, h = ih * k;
+  const left = box.left + (box.width - w) / 2;
+  const top = box.top + (box.height - h) / 2;
+  const x = ev.clientX - left, y = ev.clientY - top;
+  if (x < 0 || y < 0 || x > w || y > h) return null;      // 点在黑边上，不算
+  return { u: x / w, v: y / h };
+}
+
+sceneImg.parentElement.addEventListener("click", (ev) => {
+  if (!vLastAt || Date.now() - vLastAt > 4000) { toast("画面没在跑，先让 Unity 播放。"); return; }
+  const p = sceneUV(ev);
+  if (!p) return;
+  fetch(`http://127.0.0.1:8765/garden/plant?u=${p.u.toFixed(4)}&v=${p.v.toFixed(4)}`)
+    .then((r) => r.json())
+    .then((j) => { if (!j.ok) toast(j.error || "种花没成功。"); })
+    .catch(() => toast("连不上桥接，种花没成功。"));
+});
+const viewBar = $("viewBar");
+const viewEmpty = $("viewEmpty");
+let emptyKind = "start";   // 空画面上的按钮该打 /control/start 还是 /control/restart
+let launching = false;
+
+function setView(state) {
+  if (state === viewState) return;
+  viewState = state;
+  if (state === "live") {
+    viewEmpty.style.display = "none";
+    viewBar.classList.add("live");
+    $("vText").textContent = "Unity 实时画面 · 点地面种花";
+    return;
+  }
+  viewBar.classList.remove("live");
+  viewEmpty.style.display = "flex";
+  const ring = viewEmpty.querySelector(".ringmini");
+  const btn = $("launchBtn");
+  ring.style.animationPlayState = "running";
+  if (state === "stalled") {
+    emptyKind = "restart";
+    $("vText").textContent = "画面停了";
+    $("emptyTitle").textContent = "Unity 画面停了";
+    $("emptyDesc").textContent = "进程可能还活着但推流断了。点下面重新启动，不用去 Unity。";
+    btn.textContent = "重新启动画面";
+    ring.style.animationPlayState = "paused";
+  } else {
+    emptyKind = "start";
+    $("vText").textContent = "等待 Unity 画面";
+    $("emptyTitle").textContent = "Unity 还没开始播放";
+    $("emptyDesc").textContent = "点下面的按钮就会启动 Unity 画面，大约 5 秒。";
+    btn.textContent = "启动画面";
+  }
+}
+
+/* 空画面上的「启动画面 / 重新启动画面」：全程留在控制台里，不需要切到 Unity。
+   start   = 画面没起来（可能连成品都没启动）
+   restart = 进程在但推流断了（_launch_player 只会回 already-running，不会真重启） */
+async function launchView() {
+  if (launching) return;
+  launching = true;
+  const kind = emptyKind;
+  const btn = $("launchBtn");
+  const desc = $("emptyDesc");
+  btn.disabled = true;
+  btn.textContent = "正在启动…";
+  desc.textContent = "正在拉起 Unity，画面大概 5 秒后出现在这里。";
+  try {
+    const r = await fetch(`${CONTROL_URL}/${kind}?t=${Date.now()}`, { cache: "no-store" });
+    const j = await r.json();
+    const u = String((j.steps || {}).unity || "");
+    if (u === "no-build") {
+      desc.textContent = "还找不到打包好的成品（UnityVR/Build/NeuroBloom.app）。先打包一次，之后这个按钮就能直接拉起来。";
+    } else if (u === "already-running" || u === "already-playing" || u === "launched") {
+      desc.textContent = "已启动，正在等画面接上…（第一次启动大约 5 秒）";
+    } else if (u.startsWith("failed")) {
+      desc.textContent = "启动失败：" + u;
+    } else {
+      desc.textContent = "桥接返回：" + (u || "（空）");
+    }
+  } catch (err) {
+    desc.textContent = "连不上桥接（8765 端口没在跑？）。";
+  } finally {
+    launching = false;
+    btn.disabled = false;
+    btn.textContent = kind === "restart" ? "重新启动画面" : "启动画面";
+  }
+}
+$("launchBtn").addEventListener("click", (e) => {
+  e.stopPropagation();     // 别让点击冒泡到画面卡片（那是种花的手势）
+  launchView();
+});
+
+function connectVideo() {
+  try { vws = new WebSocket(VIDEO_URL); }
+  catch (e) { setTimeout(connectVideo, 2000); return; }
+  vws.binaryType = "blob";
+
+  vws.onmessage = (ev) => {
+    if (typeof ev.data === "string") return;        // 只认二进制帧
+    const url = URL.createObjectURL(ev.data);
+    sceneImg.src = url;
+    vUrls.push(url);
+    while (vUrls.length > 3) URL.revokeObjectURL(vUrls.shift());   // 最多留 3 个，防止内存涨
+    vCount++;
+    vLastAt = Date.now();
+    setView("live");
+  };
+
+  vws.onclose = () => {
+    setView(vCount ? "stalled" : "empty");
+    if (mode === "running") setTimeout(connectVideo, 1500);
+  };
+  vws.onerror = () => { try { vws.close(); } catch (e) {} };
+}
+
+/* 每秒算一次帧率；超过 4 秒没新帧就当成停了（只在演示时跑） */
+function watchFps() {
+  const n = vCount - vLastCount;
+  vLastCount = vCount;
+  $("vFps").textContent = n > 0 ? `${n} fps` : "— fps";
+  if (vLastAt && Date.now() - vLastAt > 4000) setView("stalled");
+}
+
+/* ==========================================================
+   7. 心跳检查：超过 6 秒没状态 → 灯灭 + 进预览
+   ========================================================== */
+function heartbeat() {
+  const now = Date.now();
+  if (lastRealAt && now - lastRealAt > 6000) {
+    setPill("pEeg", false, "脑电");
+  }
+  if (lastAgentAt && now - lastAgentAt > 90000) {
+    setPill("pAgent", false, "智能体");
+  }
+  $("clock").textContent = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+
+  // 轮次进度条按墙上时间平滑走（数据每 2 秒才来一次）
+  const rs = 20;
+  $("roundFill").style.width = `${((now / 1000) % rs) / rs * 100}%`;
+}
+
+/* ==========================================================
+   8. 预览模式：完全没连上时，用一条平滑假曲线把界面跑起来
+      —— 只为了让界面能看，不是数据。底部会挂一条提示。
+   ========================================================== */
+let previewOn = false;
+let pvT = 0;
+
+function previewTick() {
+  // 只有连续 6 秒收不到真实数据，才让预览接管；一旦有真数据，立刻让位
+  const stale = !lastRealAt || Date.now() - lastRealAt > 6000;
+  if (!stale) {
+    if (previewOn) { previewOn = false; $("previewFlag").classList.remove("show"); }
+    return;
+  }
+  if (!previewOn) {
+    previewOn = true;
+    $("previewFlag").classList.add("show");
+    setPill("pBridge", false, "桥接");
+  }
+  pvT += 1;
+  const relax = 0.5 + 0.34 * Math.sin(pvT / 7.5) + 0.06 * Math.sin(pvT / 2.1);
+  const r = clamp01(relax);
+  renderState({
+    label: r >= 0.65 ? "relaxed" : (r <= 0.35 ? "tense" : "neutral"),
+    relax: r, n_good: 12, score: 0.6 + 0.5 * Math.sin(pvT / 9),
+    world_params: {
+      sunlight: 0.25 + 0.75 * r,
+      fog: 1 - r,
+      bloom: r,
+      crystal: clamp01((r - 0.4) / 0.4),
+    },
+    channels: Array.from({ length: 16 }, (_, i) => ({
+      i: i + 1,
+      std: 40 + 90 * Math.abs(Math.sin(pvT / 5 + i)),
+      mean: 300 + 400 * Math.sin(pvT / 7 + i * 1.7),
+      ok: (i * 7 + Math.floor(pvT / 11)) % 5 !== 0,
+    })),
+    round: 3, strategy: "P8", strategy_name: "暖光微开",
+    null_arm: false, modulated: true, round_seconds: 20,
+    rec: { on: true, dir: "2026-10-21_09-30", seconds: pvT * 2, chunks: Math.floor(pvT / 30), gaps: 0 },
+  }, true);   // true = 这是预览数据，不算真实
+  lastAgentAt = Date.now();
+}
+
+/* ==========================================================
+   8. 详情抽屉：顶部每一盏灯都能点开
+   —— 内容全部来自桥接的 /status，前端只排版、不再自己猜
+   ========================================================== */
+const STATUS_URL = "http://127.0.0.1:8765/status";
+
+const TOPIC_META = {
+  bridge: { t: "桥接服务", s: "8765 端口 · 脑电、世界、画面三路消息都从这里过" },
+  eeg:    { t: "脑电通道", s: "eeg_service → 桥接 → 这里，最近一条状态长什么样" },
+  world:  { t: "世界通道", s: "Unity 和智能体共用的一条总线，谁在线都写在这" },
+  agent:  { t: "智能体", s: "它看脑电状态，生成此刻要说的那句话" },
+  source: { t: "数据来源", s: "现在屏幕上这些数字，到底是谁给的" },
+  clock:  { t: "时钟", s: "本机时间和桥接服务器时间的差值" },
+};
+
+let statusCache = null;
+let drawerTopic = null;
+let drawerTimer = null;
+
+const drawer = $("drawer"), drawerMask = $("drawerMask"), drawerBody = $("drawerBody");
+
+function esc(s) {
+  return String(s === null || s === undefined ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function ageStr(sec) {
+  if (sec === null || sec === undefined) return "从没发生过";
+  if (sec < 1) return "刚刚";
+  if (sec < 60) return `${sec < 10 ? sec.toFixed(1) : Math.round(sec)} 秒前`;
+  if (sec < 3600) return `${Math.floor(sec / 60)} 分钟前`;
+  return `${Math.floor(sec / 3600)} 小时前`;
+}
+
+function durStr(sec) {
+  sec = Math.round(sec || 0);
+  if (sec < 60) return `${sec} 秒`;
+  if (sec < 3600) return `${Math.floor(sec / 60)} 分 ${sec % 60} 秒`;
+  return `${Math.floor(sec / 3600)} 小时 ${Math.floor((sec % 3600) / 60)} 分`;
+}
+
+function kv(rows) {
+  return `<dl class="kv">${rows
+    .map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`)
+    .join("")}</dl>`;
+}
+
+async function getStatus() {
+  try {
+    const ctl = new AbortController();
+    const to = setTimeout(() => ctl.abort(), 1500);
+    const r = await fetch(STATUS_URL, { signal: ctl.signal, cache: "no-store" });
+    clearTimeout(to);
+    if (!r.ok) return null;
+    const j = await r.json();
+    statusCache = j;
+    return j;
+  } catch (e) {
+    return null;
+  }
+}
+
+/* ---------- 各主题的内容 ---------- */
+
+function renderSource(j) {
+  if (!j) {
+    return `<div class="verdict bad">连不上桥接的 <code>/status</code>。<br>
+      要么桥接没在跑，要么 8765 被别的程序占了。先双击桌面 NeuroBloom.app 把服务拉起来。</div>`;
+  }
+  const st = j.state || {};
+  const src = j.source;
+  let cls, txt;
+  if (src === "none") {
+    cls = "warn";
+    txt = "现在<b>没有任何读脑进程</b>连着桥接。屏幕上这些数字是控制台自己生成的预览，不是你的脑电。";
+  } else if (src === "synthetic") {
+    cls = "warn";
+    txt = "连上的是<b>合成板</b>，不是真实电极。数据按真实节奏模拟出来，流程能完整走通，但和你的脑电无关。接上真板子后这里会自动变成绿色。";
+  } else {
+    cls = "ok";
+    txt = `真实板卡 <b>${esc(st.board_id)}</b> 正在送数据，最近一条在 ${ageStr(j.state_age_s)}。`;
+  }
+  const showReal = Date.now() - lastRealAt < 6000;
+  const rec = st.rec || {};
+  return `<div class="verdict ${cls}">${txt}</div>
+    <div class="sec-title">后端怎么看</div>
+    ${kv([
+      ["数据来源", src === "none" ? "没有读脑进程" : src === "synthetic" ? "合成板（模拟）" : "真实板卡"],
+      ["板卡编号", st.board_id === undefined ? "—" : (st.board_id === -1 ? "-1（合成板）" : esc(st.board_id))],
+      ["采样率", st.fs ? `${esc(st.fs)} Hz` : "—"],
+      ["最近一条", ageStr(j.state_age_s)],
+      ["判定结果", st.label ? `${esc(st.label)} · 合格 ${st.n_good ?? "—"}/16 路` : "还没进入判定"],
+      ["录制", rec.on ? `在录 · ${esc(rec.dir || "")} · ${fmtTime(rec.seconds || 0)}` : "没在录"],
+    ])}
+    <div class="sec-title">页面这边</div>
+    ${kv([
+      ["正在显示", showReal ? "真实数据" : "预览模式（6 秒没收到真数据）"],
+      ["徽章文字", esc(($("demoBadge").textContent || "").trim()) || "（没显示）"],
+      ["画面", viewState === "live" ? "Unity 在推流" : viewState === "stalled" ? "Unity 停播了" : "还没画面"],
+    ])}`;
+}
+
+function renderBridge(j) {
+  if (!j) {
+    return `<div class="verdict bad">连不上 <code>/status</code>：桥接没在跑。双击桌面 NeuroBloom.app 可以拉起来。</div>`;
+  }
+  const sv = j.server, ch = j.channels;
+  const eegOn = ch.eeg.clients > 0;
+  const vidOn = ch.video.publishers > 0;
+  const bits = [];
+  if (eegOn) bits.push("脑电有人送数据");
+  if (vidOn) bits.push("Unity 在推画面");
+  if (ch.world.clients > 0) bits.push(`${ch.world.clients} 个客户端挂在世界总线上`);
+  return `<div class="verdict ${eegOn ? "ok" : "warn"}">
+      桥接活着，已经跑了 ${durStr(sv.uptime_s)}。${bits.length ? bits.join("，") + "。" : "但还没有任何通道接入。"}
+    </div>
+    <div class="sec-title">服务</div>
+    ${kv([
+      ["端口", `ws://127.0.0.1:${esc(sv.port)} · http://127.0.0.1:${esc(sv.port)}/status`],
+      ["进程号", esc(sv.pid)],
+      ["启动于", esc(sv.started_at)],
+      ["已运行", durStr(sv.uptime_s)],
+    ])}
+    <div class="sec-title">三路通道</div>
+    ${kv([
+      ["脑电 /ws/eeg", `${ch.eeg.clients} 个连接 · 累计 ${ch.eeg.msgs} 条 · 最近 ${ageStr(ch.eeg.last_age_s)}`],
+      ["世界 /ws/world", `${ch.world.clients} 个连接 · 累计 ${ch.world.msgs} 条 · 最近 ${ageStr(ch.world.last_age_s)}`],
+      ["画面 /ws/video", `${ch.video.publishers} 个推流 · ${ch.video.viewers} 个观看 · 最近一帧 ${ageStr(ch.video.last_frame_age_s)}`],
+    ])}`;
+}
+
+function renderEeg(j) {
+  if (!j) return `<div class="verdict bad">连不上 <code>/status</code>：桥接没在跑。</div>`;
+  const st = j.state;
+  if (!st) {
+    return `<div class="verdict warn">桥接<b>一条脑电状态都还没收到</b>。<br>
+      读脑进程没连上，或者板子不在网上。看 <code>.data/logs/eeg.log</code> 最下面几行。</div>
+      <div class="sec-title">连接</div>
+      ${kv([["/ws/eeg 连接数", j.channels.eeg.clients], ["累计消息", j.channels.eeg.msgs]])}`;
+  }
+  const rec = st.rec || {};
+  const chs = Array.isArray(st.channels) ? st.channels : [];
+  const good = chs.filter((c) => c.ok).length;
+  const chHtml = chs.length
+    ? `<div class="chlist">${chs.map((c) => {
+        const cls = c.ok ? "ok" : "bad";
+        return `<i class="${cls}">CH${c.i + 1}<b>${c.std === null || c.std === undefined ? "—" : Math.round(c.std)}</b></i>`;
+      }).join("")}</div>
+      <div class="empty-note">每格右边是该路的标准差（µV）。合格标准：3 ~ 300 µV，且直流偏置小于 2000 µV。</div>`
+    : `<div class="empty-note">这条状态里没有逐路数据。</div>`;
+  return `<div class="verdict ${st.n_good >= 8 ? "ok" : "warn"}">
+      最近一条状态在 ${ageStr(j.state_age_s)}：<b>${esc(st.label || "未知")}</b>，合格 <b>${st.n_good ?? "—"}/16</b> 路，
+      放松度 ${st.relax === null || st.relax === undefined ? "—" : Math.round(st.relax * 100) + "%"}。
+    </div>
+    <div class="sec-title">这条状态的原始字段</div>
+    ${kv([
+      ["采样率", st.fs ? `${esc(st.fs)} Hz` : "—"],
+      ["板卡", st.board_id === undefined ? "—" : esc(st.board_id)],
+      ["α/β 相对基线", st.score === null || st.score === undefined ? "—" : esc(Number(st.score).toFixed(3))],
+      ["策略", st.strategy_name ? `R${st.round ?? "?"} · ${esc(st.strategy_name)}` : "—"],
+      ["备注", st.note ? esc(st.note) : "—"],
+      ["录制", rec.on ? `${fmtTime(rec.seconds || 0)} · ${rec.chunks || 0} 个文件 · 丢样 ${rec.gaps || 0}` : "没在录"],
+      ["录制目录", rec.on ? esc(rec.dir || "") : "—"],
+    ])}
+    <div class="sec-title">逐路标准差（µV）${chs.length ? ` · 合格 ${good}/${chs.length}` : ""}</div>
+    ${chHtml}`;
+}
+
+function roleName(r) {
+  return { unity: "Unity", agent: "智能体", console: "控制台", other: "其它", unknown: "未知" }[r] || "未知";
+}
+
+function renderWorld(j) {
+  if (!j) return `<div class="verdict bad">连不上 <code>/status</code>：桥接没在跑。</div>`;
+  const st = j.state || {};
+  const wp = st.world_params || {};
+  const det = (j.channels.world && j.channels.world.detail) || [];
+  const rows = det.length
+    ? det.map((d) => {
+        const cls = ["agent", "unity", "console"].includes(d.role) ? d.role : "";
+        const ua = d.ua ? esc(d.ua.split(")")[0] + ")") : "没有 User-Agent";
+        return `<div class="row">
+          <span class="tagr ${cls}">${roleName(d.role)}</span>
+          <span class="who">${durStr(d.connected_s)}</span>
+          <span class="meta">${d.msgs} 条消息<br>${ua}</span>
+        </div>`;
+      }).join("")
+    : `<div class="empty-note">世界总线上一个人都没有。Unity 没在播放、智能体没起来的时候就是这样。</div>`;
+
+  const p = (label, v, key) => `${label} <b>${v === null || v === undefined ? "—" : Number(v).toFixed(2)}</b>`;
+  return `<div class="verdict ${det.length ? "ok" : "warn"}">
+      ${det.length ? `世界总线上有 <b>${det.length}</b> 个客户端。` : "世界总线上没人，场景不会自己动。"}
+    </div>
+    <div class="sec-title">当前四键（驱动物理画面）</div>
+    ${kv([
+      ["阳光 sunlight", p("", wp.sunlight)],
+      ["雾 fog", p("", wp.fog)],
+      ["花开 bloom", p("", wp.bloom)],
+      ["水晶 crystal", p("", wp.crystal)],
+    ])}
+    <div class="sec-title">在线客户端</div>
+    <div class="rows">${rows}</div>
+    <div class="sec-title">最近一轮策略</div>
+    ${kv([
+      ["轮次", st.round === undefined || st.round === null ? "—" : `R${esc(st.round)}`],
+      ["方案", st.strategy_name ? esc(st.strategy_name) : "—"],
+      ["是否不干预对照", st.null_arm === undefined ? "—" : (st.null_arm ? "是（这一轮刻意不干预）" : "否")],
+      ["轮长", st.round_seconds ? `${esc(st.round_seconds)} 秒` : "—"],
+    ])}`;
+}
+
+function renderAgent(j) {
+  if (!j) return `<div class="verdict bad">连不上 <code>/status</code>：桥接没在跑。</div>`;
+  const g = j.guidance || {};
+  const connected = (j.channels.world && j.channels.world.clients) || 0;
+  if (!g.text) {
+    return `<div class="verdict warn">桥接还<b>没收到过任何引导语</b>。<br>
+      智能体进程可能没起来，或者它还没等到足够稳定的脑电状态。</div>
+      <div class="sec-title">连接</div>
+      ${kv([["世界总线客户端", connected], ["引导语", "0 条"]])}`;
+  }
+  return `<div class="verdict ok">最近一句在 ${ageStr(g.age_s)}生成。</div>
+    <div class="sec-title">此刻对它说的话（全文）</div>
+    <div class="quote">${esc(g.text)}${g.cue ? `<span class="cue">此刻建议：${esc(g.cue)}</span>` : ""}</div>
+    <div class="sec-title">这条引导语的来路</div>
+    ${kv([
+      ["基于状态", g.state ? esc(g.state) : "—"],
+      ["生成时间", ageStr(g.age_s)],
+      ["世界总线客户端", connected],
+    ])}`;
+}
+
+function renderClock(j) {
+  const local = new Date();
+  const j2 = j || {};
+  const svNow = j2.server ? j2.server.now : null;
+  let drift = "—";
+  if (svNow) {
+    const d = Math.round((local - new Date(svNow.replace(/-/g, "/"))) / 1000);
+    drift = `${d >= 0 ? "+" : ""}${d} 秒（本机减服务器）`;
+  }
+  return `<div class="verdict ok">这台电脑现在的时间，和桥接服务器报的时间。</div>
+    ${kv([
+      ["本机时间", local.toLocaleString("zh-CN", { hour12: false })],
+      ["桥接时间", svNow ? esc(svNow) : "（拿不到）"],
+      ["差值", drift],
+      ["时区", esc(Intl.DateTimeFormat().resolvedOptions().timeZone)],
+      ["桥接已运行", j2.server ? durStr(j2.server.uptime_s) : "—"],
+    ])}`;
+}
+
+const RENDERERS = {
+  bridge: renderBridge, eeg: renderEeg, world: renderWorld,
+  agent: renderAgent, source: renderSource, clock: renderClock,
+};
+
+/* ---------- 开关抽屉 ---------- */
+function paintDrawer() {
+  const meta = TOPIC_META[drawerTopic] || { t: "详情", s: "" };
+  $("drawerTitle").textContent = meta.t;
+  $("drawerSub").textContent = meta.s;
+  const html = (RENDERERS[drawerTopic] || (() => ""))(statusCache);
+  // 只在内容真的变了才写 DOM：每秒刷新，别让滚动位置被冲掉
+  if (drawerBody.dataset.topic !== drawerTopic || drawerBody.innerHTML !== html) {
+    const y = drawerBody.scrollTop;
+    drawerBody.innerHTML = html;
+    drawerBody.dataset.topic = drawerTopic;
+    drawerBody.scrollTop = y;
+  }
+}
+
+async function openDrawer(topic) {
+  drawerTopic = topic;
+  document.querySelectorAll("#drawerTabs .pill").forEach((el) => {
+    el.classList.toggle("active", el.dataset.topic === topic);
+  });
+  drawerMask.classList.add("show");
+  drawer.classList.add("show");
+  document.body.style.overflow = "hidden";
+  paintDrawer();                       // 先用上一次的缓存顶上，别一开就是空白
+  await getStatus();
+  if (drawerTopic !== topic) return;   // 期间又点了别的灯
+  paintDrawer();
+  if (drawerTimer) clearInterval(drawerTimer);
+  drawerTimer = setInterval(async () => {
+    if (!drawerTopic) return;
+    await getStatus();
+    paintDrawer();
+  }, 1000);
+}
+
+function closeDrawer() {
+  drawerTopic = null;
+  drawerMask.classList.remove("show");
+  drawer.classList.remove("show");
+  document.body.style.overflow = "";
+  if (drawerTimer) { clearInterval(drawerTimer); drawerTimer = null; }
+}
+
+$("drawerClose").addEventListener("click", closeDrawer);
+drawerMask.addEventListener("click", closeDrawer);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
+
+/* ---------- 把所有灯接上点击 ---------- */
+[["pBridge", "bridge"], ["pEeg", "eeg"], ["pWorld", "world"],
+ ["pAgent", "agent"], ["pSource", "source"], ["clock", "clock"]].forEach(([id, topic]) => {
+  const el = $(id);
+  el.addEventListener("click", () => openDrawer(topic));
+  el.title = "点开看详情";
+  el.setAttribute("tabindex", "0");
+  el.setAttribute("role", "button");
+  el.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDrawer(topic); }
+  });
+});
+
+const badgeEl = $("demoBadge");
+badgeEl.addEventListener("click", () => openDrawer("source"));
+badgeEl.title = "点开看这些数据从哪来";
+badgeEl.style.cursor = "pointer";
+
+/* ==========================================================
+   10. 待机 / 演示
+   —— 待机时：不连 WebSocket、不起定时器、不画动画。
+   —— 点「开始演示」才拉起采集和 Unity；要停就点「停止演示」。
+   ========================================================== */
+const CONTROL_URL = "http://127.0.0.1:8765/control";
+
+/* 演示时长上限（秒）。到点只提醒一次，不自动关停。
+   这里原来是 180，而且一到点就直接 stopDemo()：那个调用会打到服务端
+   /control/stop，服务端顺手 _quit_player() 把 Unity 成品一起杀掉。
+   现场表现就是「演示跑到一半 Unity 突然没了，画面停在『Unity 停止播放了』」。
+   干电极单次训练本来就按 8 分钟来，3 分钟硬砍也太短了。 */
+const DEMO_MAX_SECONDS = 480;
+
+let mode = "idle";
+let startedAt = 0;
+let liveTimer = null;
+let timers = [];
+let starting = false;
+
+function pad2(n) { return String(n).padStart(2, "0"); }
+
+function stopTimers() {
+  timers.forEach((t) => clearInterval(t));
+  timers = [];
+  if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
+}
+
+function toast(msg) {
+  const d = document.createElement("div");
+  d.className = "toast";
+  d.textContent = msg;
+  document.body.appendChild(d);
+  setTimeout(() => d.remove(), 7000);
+}
+
+function tickLive() {
+  const sec = Math.floor((Date.now() - startedAt) / 1000);
+  $("liveTime").textContent = `${pad2(Math.floor(sec / 60))}:${pad2(sec % 60)}`;
+  // 到点只提醒一次（sec 每秒 +1，所以这个等号只会在那一秒成立）。
+  // 绝不能在这里调 stopDemo()：它会顺着服务端把 Unity 成品一起杀掉，
+  // 演示途中画面会直接消失。
+  if (sec === DEMO_MAX_SECONDS) {
+    toast("已到 8 分钟，建议结束本次训练。要停请点「停止演示」。");
+  }
+}
+
+function enterRunning() {
+  mode = "running";
+  document.body.dataset.mode = "running";
+  startedAt = Date.now();
+  $("liveTime").textContent = "00:00";
+  vCount = 0; vLastCount = 0; vLastAt = 0;
+  lastRealAt = Date.now();     // 给 6 秒缓冲，别一进来就挂「预览数据」
+  lastAgentAt = 0;
+  previewOn = false;
+  setView("empty");
+  liveTimer = setInterval(tickLive, 1000);
+  timers.push(setInterval(watchFps, 1000));
+  timers.push(setInterval(heartbeat, 250));
+  timers.push(setInterval(previewTick, 1000));
+  connect();
+  connectVideo();
+}
+
+async function startDemo() {
+  if (mode === "running" || starting) return;
+  starting = true;
+  const btn = $("startBtn");
+  btn.disabled = true;
+  btn.textContent = "正在启动…";
+  $("idleMeta").textContent = "正在拉起脑电采集和 Unity 画面，大概 5 秒。";
+
+  let reachable = true, note = "";
+  try {
+    const r = await fetch(`${CONTROL_URL}/start?t=${Date.now()}`, { cache: "no-store" });
+    const j = await r.json();
+    const bad = Object.entries(j.steps || {})
+      .filter(([, v]) => String(v).startsWith("failed"));
+    if (bad.length) note = "有一步没成功：" + bad.map(([k, v]) => `${k} ${v}`).join("，") + "。";
+  } catch (e) {
+    reachable = false;
+    note = "连不上桥接。先双击桌面上的 NeuroBloom，再点开始。";
+  }
+
+  btn.disabled = false;
+  btn.textContent = "开始演示";
+  starting = false;
+
+  if (!reachable) { $("idleMeta").textContent = note; return; }
+  enterRunning();
+  if (note) toast(note);
+}
+
+async function stopDemo(reason) {
+  if (mode !== "running") return;
+  mode = "idle";
+  document.body.dataset.mode = "idle";
+  document.body.classList.remove("detail-open");
+  $("detailBtn").textContent = "看细节";
+
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  try { if (ws) ws.close(); } catch (e) {}
+  ws = null;
+  try { if (vws) vws.close(); } catch (e) {}
+  vws = null;
+  stopTimers();
+  vCount = 0; vLastCount = 0; vLastAt = 0;
+  previewOn = false;
+  closeDrawer();
+
+  // 界面清干净，免得下次点开还挂着上一次的数字
+  sceneImg.removeAttribute("src");
+  setView("empty");
+  $("vFps").textContent = "— fps";
+  $("relaxVal").textContent = "—";
+  $("stateWord").textContent = "等待数据";
+  $("stateWord").className = "state-word bad";
+  $("fFocus").style.width = "0";
+  $("vFocus").textContent = "—";
+  renderLateral(null);
+  $("bandBox").innerHTML = "";
+  $("relaxSub").textContent = "还没有收到脑电状态";
+  $("guideText").textContent = "这里会显示此刻对佩戴者说的那句话。";
+  $("guideCue").textContent = "";
+  $("previewFlag").classList.remove("show");
+  $("demoBadge").style.display = "none";
+  setPill("pBridge", false, "桥接");
+  setPill("pEeg", false, "脑电");
+  setPill("pWorld", false, "世界");
+  setPill("pAgent", false, "智能体");
+
+  const seconds = Math.round((Date.now() - startedAt) / 1000);
+  $("idleMeta").textContent = `${reason ? reason + " " : ""}上次演示 ${durStr(seconds)}。`;
+
+  try {
+    const j = await (await fetch(`${CONTROL_URL}/stop?t=${Date.now()}`, { cache: "no-store" })).json();
+    if (!j.ok) $("idleMeta").textContent += " 有一步没停干净：" + JSON.stringify(j.steps);
+  } catch (e) {
+    $("idleMeta").textContent += "（桥接没应答，可能已经关了）";
+  }
+}
+
+$("startBtn").addEventListener("click", startDemo);
+$("stopBtn").addEventListener("click", () => stopDemo());
+$("detailBtn").addEventListener("click", () => {
+  const on = document.body.classList.toggle("detail-open");
+  $("detailBtn").textContent = on ? "收起细节" : "看细节";
+});
+$("idleStatus").addEventListener("click", () => openDrawer("bridge"));
+$("liveChip").addEventListener("click", () => openDrawer("bridge"));
+
+// ── 设备连接 ────────────────────────────────────────────────
+// 目标：打开控制台就知道设备连没连、连的是哪块板；连不上能看见原因，
+// 而不是去翻终端日志。所有参数都由桥接的 /device 提供。
+const DEVICE_URL = "http://127.0.0.1:8765/device";
+const DEVICE_CONNECT_URL = "http://127.0.0.1:8765/device/connect";
+let devInfo = null;
+
+function devPaint(d) {
+  if (!d) return;
+  devInfo = d;
+  const mode = d.mode;
+  const label = mode === "real" ? "设备 · 已连接"
+    : mode === "demo" ? "设备 · 合成板"
+    : mode === "starting" ? "设备 · 连接中" : "设备 · 未连接";
+  $("devDot").className = "devdot" + (mode === "real" ? " real" : mode === "demo" ? " demo" : "");
+  $("devText").textContent = label;
+  const idle = $("idleDev");
+  if (idle) idle.textContent = mode === "real" ? "设备：已连接" : "设备：检查连接";
+
+  if ($("devWrap").hidden) return;
+  $("devState").textContent = label.replace("设备 · ", "");
+  $("devBoardName").textContent = d.board_name || "—";
+  $("devIface").textContent = `BrainFlow · 板子 ${d.config.ip} · 本机口 ${d.config.port}`;
+  if (document.activeElement !== $("devIp")) $("devIp").value = d.config.ip;
+  if (document.activeElement !== $("devPort")) $("devPort").value = d.config.port;
+  $("devBoardSel").value = String(d.config.board_id);
+  if (d.hint) $("devHint").textContent = d.hint;
+  if (d.last_error && !$("devMsg").textContent) devMsg(d.last_error);
+}
+
+async function devRefresh(refresh) {
+  try {
+    const r = await fetch(`${DEVICE_URL}?t=${Date.now()}${refresh ? "&refresh=1" : ""}`,
+      { cache: "no-store" });
+    devPaint(await r.json());
+  } catch (e) { /* 桥接没起来时保持原样 */ }
+  return devInfo;
+}
+
+function devMsg(text, ok) {
+  const el = $("devMsg");
+  el.textContent = text || "";
+  el.classList.toggle("ok", !!ok);
+}
+
+async function devConnect(ip, port, board) {
+  $("devConn").disabled = true;
+  devMsg("正在连接，可能要几秒…");
+  try {
+    const q = new URLSearchParams({ ip, port: String(port), board_id: String(board) });
+    const r = await fetch(`${DEVICE_CONNECT_URL}?${q}`, { cache: "no-store" });
+    const j = await r.json();
+    if (!j.ok) { devMsg(j.error || "连接失败"); return false; }
+    devMsg("已连接，正在等第一帧脑电…", true);
+    setTimeout(() => devRefresh(true), 1500);
+    return true;
+  } catch (e) {
+    devMsg("桥接没有应答（8765 端口没起来）");
+    return false;
+  } finally {
+    $("devConn").disabled = false;
+  }
+}
+
+function devOpen() {
+  $("devWrap").hidden = false;
+  devRefresh(false);
+}
+
+function devClose() { $("devWrap").hidden = true; }
+
+if ($("devBtn")) {
+  $("devBtn").addEventListener("click", devOpen);
+  $("idleDev").addEventListener("click", devOpen);
+  $("devClose").addEventListener("click", devClose);
+  $("devWrap").addEventListener("click", e => { if (e.target.id === "devWrap") devClose(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("devWrap").hidden) devClose(); });
+  $("devProbe").addEventListener("click", async () => {
+    await devRefresh(true);
+    const p = devInfo && devInfo.probe;
+    devMsg(p && p.reachable ? `通了，${p.ms} ms 响应，可以点连接` : `没通：${(p && p.error) || "超时"}`, !!(p && p.reachable));
+  });
+  $("devConn").addEventListener("click", async () => {
+    const ok = await devConnect($("devIp").value.trim(), $("devPort").value.trim(), $("devBoardSel").value);
+    if (ok) setTimeout(devClose, 1200);
+  });
+  $("devDemo").addEventListener("click", async () => {
+    devClose();
+    if (document.body.dataset.mode === "idle") startDemo();
+  });
+
+  // 打开页面先看一眼：板子在线就自动连上，不用人点
+  devRefresh(true).then(d => {
+    if (d && d.mode === "idle" && d.probe && d.probe.reachable) {
+      devConnect(d.config.ip, d.config.port, d.config.board_id);
+    }
+  });
+  setInterval(() => devRefresh(false), 5000);
+}
+
+// ── 语音（本地 piper，离线） ───────────────────────────────
+// 老年人看屏幕上的长句子吃力，把引导语读出来比加字号有用。
+const TTS_URL = "http://127.0.0.1:8765/tts";
+let voiceOn = false;
+let lastSpoken = "";
+let audioEl = null;
+
+function speak(text) {
+  if (!voiceOn || !text) return;
+  const clean = text.replace(/\s+/g, " ").trim().slice(0, 120);
+  if (!clean || clean === lastSpoken) return;
+  lastSpoken = clean;
+  if (!audioEl) audioEl = new Audio();
+  audioEl.src = `${TTS_URL}?text=${encodeURIComponent(clean)}&t=${Date.now()}`;
+  audioEl.play().catch(() => {});
+}
+
+function voiceToggle() {
+  voiceOn = !voiceOn;
+  const b = $("voiceBtn");
+  b.textContent = voiceOn ? "语音 · 开" : "语音 · 关";
+  b.setAttribute("aria-pressed", String(voiceOn));
+  if (voiceOn) {
+    const q = document.querySelector(".guide .q");
+    lastSpoken = "";
+    speak(q ? q.textContent : "语音已打开。");
+  }
+}
+
+if ($("voiceBtn")) $("voiceBtn").addEventListener("click", voiceToggle);
+
+// ── 趋势 ────────────────────────────────────────────────────
+// 单次报告回答"这次怎么样"，趋势回答"这周比上周好还是差"。
+const TREND_URL = "http://127.0.0.1:8765/trend";
+
+function trLabel(name) {
+  const m = /session-(\d{8})-(\d{6})/.exec(name || "");
+  return m ? `${m[1].slice(4, 6)}/${m[1].slice(6, 8)}` : "";
+}
+
+function trPaint(d) {
+  const lv = (d.risk && d.risk.level) || "unknown";
+  const names = { steady: "平稳", mild: "波动", watch: "需关注", quality: "数据质量", unknown: "未知" };
+  $("trLvl").className = "trlvl " + lv;
+  $("trLvl").textContent = names[lv] || lv;
+  $("trendText").textContent = "趋势 · " + (names[lv] || "—");
+  $("trBase").textContent = d.baseline
+    ? `放松 ${d.baseline.relax.toFixed(2)} · |LI| ${d.baseline.li.toFixed(2)}（前 ${d.baseline.sessions} 次）` : "—";
+  $("trNow").textContent = d.recent
+    ? `放松 ${d.recent.relax.toFixed(2)} · |LI| ${d.recent.li.toFixed(2)}（近 ${d.recent.sessions} 次）` : "—";
+
+  const list = (d.sessions || []).slice(-8);
+  // 同一天练了很多次时，日期标签会全部一样，改成显示时刻
+  const dates = list.map(s => trLabel(s.name));
+  const sameDay = dates.length > 1 && new Set(dates).size === 1;
+  const label = s => {
+    if (!sameDay) return trLabel(s.name);
+    const m = /session-\d{8}-(\d{2})(\d{2})/.exec(s.name || "");
+    return m ? `${m[1]}:${m[2]}` : "";
+  };
+  $("trBars").innerHTML = list.map(s => {
+    const demo = s.valid === 0 || s.valid === null;
+    const h = Math.max(10, Math.round(s.relax * 92));
+    const tip = `${s.name}｜放松 ${s.relax}｜专注 ${s.focus}｜|LI| ${s.li}｜${Math.round(s.duration_s)} 秒`;
+    return `<div class="trbar${demo ? " demo" : ""}" title="${tip}">
+      <i style="height:${h}px"></i><b>${label(s)}</b></div>`;
+  }).join("") || `<p class="trnote">还没有记录</p>`;
+
+  const rs = (d.risk && d.risk.reasons) || [];
+  $("trReasons").innerHTML = rs.map(r => `<li>${r}</li>`).join("");
+  $("trReasons").style.display = rs.length ? "" : "none";
+  $("trAdvice").textContent = (d.risk && d.risk.advice) || "";
+  $("trNote").textContent = d.note || "";
+}
+
+async function trFetch() {
+  try {
+    const r = await fetch(`${TREND_URL}?t=${Date.now()}`, { cache: "no-store" });
+    const d = await r.json();
+    trPaint(d);
+    return d;
+  } catch (e) { return null; }
+}
+
+function trOpen() { $("trWrap").hidden = false; trFetch(); }
+function trClose() { $("trWrap").hidden = true; }
+
+if ($("trendBtn")) {
+  $("trendBtn").addEventListener("click", trOpen);
+  $("trClose").addEventListener("click", trClose);
+  $("trWrap").addEventListener("click", e => { if (e.target.id === "trWrap") trClose(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("trWrap").hidden) trClose(); });
+  trFetch();
+}
+
+// ── 情绪随访量表（PHQ-2 / PHQ-9 / GAD-7） ───────────────────
+// 为什么放在控制台里：量表是临床随访的常规动作，但它不依赖脑电 ——
+// 没接电极也能做；做完之后，量表分与脑电趋势会合并成一条随访建议。
+// 隐私：只带一个编号和分值，姓名/电话之类的信息不要填进这个框。
+// 题目文本不在前端硬编码，统一从桥接的 /scales 拿（只有一份，改一处就够）。
+const SCALE_URL = "http://127.0.0.1:8765/scales";
+const SCALE_SUBMIT_URL = "http://127.0.0.1:8765/scales/submit";
+const SC_ANS = { phq2: [], phq9: [], gad7: [] };
+const SC_LABEL = { green: "低风险", yellow: "中风险", red: "高风险" };
+let SC_FORM = null;
+let SC_EXPANDED = false;
+
+// 读题不受「语音 · 开」限制：这是人主动点的，必须出声
+function scSay(text, onend) {
+  if (!text) return;
+  const clean = text.replace(/\s+/g, " ").trim().slice(0, 120);
+  const a = new Audio(`${TTS_URL}?text=${encodeURIComponent(clean)}&t=${Date.now()}`);
+  if (onend) { a.onended = onend; a.onerror = onend; }
+  a.play().catch(onend || (() => {}));
+}
+
+function scMsg(text, ok) {
+  const el = $("scMsg");
+  el.textContent = text || "";
+  el.classList.toggle("ok", !!ok);
+}
+
+function scRenderInto(box, key, items) {
+  const opts = (SC_FORM && SC_FORM.options) || [];
+  box.innerHTML = items.map((q, i) => `
+    <div class="scq">
+      <div class="qt"><span class="qn">${i + 1}</span><span class="qx">${q}</span>
+        <button class="scsay" data-key="${key}" data-i="${i}">读题</button></div>
+      <div class="scopts" data-key="${key}" data-i="${i}">
+        ${opts.map(o => `<button class="scopt" data-v="${o.value}">${o.label}</button>`).join("")}
+      </div>
+    </div>`).join("");
+}
+
+function scBuildForm() {
+  if (!SC_FORM) return;
+  scRenderInto($("scPhq2"), "phq2", SC_FORM.phq2.items);
+  scRenderInto($("scPhq9"), "phq9", SC_FORM.phq9.items);
+  scRenderInto($("scGad7"), "gad7", SC_FORM.gad7.items);
+  SC_ANS.phq2 = SC_FORM.phq2.items.map(() => null);
+  SC_ANS.phq9 = SC_FORM.phq9.items.map(() => null);
+  SC_ANS.gad7 = SC_FORM.gad7.items.map(() => null);
+}
+
+async function scLoad() {
+  try {
+    const r = await fetch(`${SCALE_URL}?t=${Date.now()}`, { cache: "no-store" });
+    const d = await r.json();
+    SC_FORM = d.questionnaire;
+    if (!SC_ANS.phq2.length) scBuildForm();
+    const last = d.latest;
+    if (last && last.label) {
+      const lvName = { green: "低风险", yellow: "中风险", red: "高风险" }[last.level] || last.label;
+      $("scaleText").textContent = "随访 · " + lvName;
+      const when = new Date((last.t || 0) * 1000);
+      $("scIntro").textContent = `上次随访 ${when.getMonth() + 1}/${when.getDate()}：`
+        + `${lvName}（PHQ-9 ${last.scores.phq9 ?? "—"}｜GAD-7 ${last.scores.gad7 ?? "—"}）。`
+        + "近两周的情况再评一次就行。";
+    }
+    return d;
+  } catch (e) {
+    scMsg("桥接没有应答（8765 端口没起来）");
+    return null;
+  }
+}
+
+function scExpand(on) {
+  SC_EXPANDED = on === undefined ? true : on;
+  $("scMoreWrap").hidden = !SC_EXPANDED;
+  $("scMore").textContent = SC_EXPANDED ? "收起完整量表" : "展开完整量表";
+}
+
+function scCollect() {
+  const out = {};
+  for (const k of ["phq2", "phq9", "gad7"]) {
+    const a = SC_ANS[k];
+    const name = { phq2: "PHQ-2", phq9: "PHQ-9", gad7: "GAD-7" }[k];
+    if (!a.length) { out[k] = ""; continue; }
+    // 整份没做 → 直接跳过（临床流程就是 PHQ-2 初筛阳性才做全量表）；
+    // 只做了一半 → 拦下来，避免拿半份卷子算分。
+    if (a.every(v => v === null || v === undefined)) { out[k] = ""; continue; }
+    const miss = a.findIndex(v => v === null || v === undefined);
+    if (miss >= 0) return { err: `${name} 第 ${miss + 1} 题还没选` };
+    out[k] = a.join(",");
+  }
+  if (!out.phq2 && !out.phq9 && !out.gad7) return { err: "先答 PHQ-2 那两题" };
+  return out;
+}
+
+function scPaintResult(j) {
+  const t = j.triage || {};
+  const rec = j.record || {};
+  const lv = t.level || "unknown";
+  $("scLvl").className = "sclvl " + lv;
+  $("scLvl").textContent = SC_LABEL[lv] || "—";
+  $("scaleText").textContent = "随访 · " + (SC_LABEL[lv] || "已评估");
+  const s = rec.scores || {};
+  const eeg = rec.eeg || {};
+  const eegName = { steady: "平稳", mild: "波动", watch: "需关注", quality: "数据质量" }[eeg.level] || "暂无数据";
+  $("scRes").hidden = false;
+  $("scRes").innerHTML = `
+    <div class="h"><b>${SC_LABEL[lv] || lv}</b>
+      <span>PHQ-9 ${s.phq9 ?? "—"} ｜ GAD-7 ${s.gad7 ?? "—"} ｜ 脑电 ${eegName}</span></div>
+    <p class="scact">${t.action || ""}</p>
+    <ul class="trlist">${(t.reasons || []).map(r => `<li>${r}</li>`).join("")}</ul>
+    <p class="trnote">${t.disclaimer || ""}
+      ${j.saved ? `已存到 sessions/scales.jsonl（编号 ${rec.pid}，${eeg.sessions || 0} 次脑电趋势参与判断）`
+                : "这次没能写进文件"}。</p>`;
+}
+
+async function scSubmit() {
+  const got = scCollect();
+  if (got.err) { scMsg(got.err); return; }
+  $("scSubmit").disabled = true;
+  scMsg("正在计算…");
+  try {
+    const q = new URLSearchParams({ pid: $("scPid").value.trim() || "anon" });
+    for (const k of ["phq2", "phq9", "gad7"]) if (got[k]) q.set(k, got[k]);
+    const r = await fetch(`${SCALE_SUBMIT_URL}?${q}`, { cache: "no-store" });
+    const j = await r.json();
+    if (!j.ok) { scMsg(j.error || "提交失败"); return; }
+    scPaintResult(j);
+    scMsg(j.saved ? "已记录" : "算了但没写进文件", j.saved);
+    // PHQ-2 阳性 → 展开完整量表（临床流程就是这么走的）
+    if (j.phq2 && j.phq2.positive && !SC_EXPANDED) {
+      scExpand(true);
+      scMsg("PHQ-2 阳性，已展开完整量表，建议继续做完 PHQ-9 与 GAD-7", true);
+      scSay("初筛结果是阳性，我们继续做完整的量表，一共十六个问题，很快就好了。");
+    }
+    if (j.phq9 && j.phq9.item9_positive) {
+      scSay("这一题提示需要尽快联系医生，请把屏幕上的建议给随访医生看。");
+    }
+  } catch (e) {
+    scMsg("桥接没有应答（8765 端口没起来）");
+  } finally {
+    $("scSubmit").disabled = false;
+  }
+}
+
+function scReadAll() {
+  const list = (SC_FORM ? SC_FORM.phq2.items : []).map((q, i) => `第${i + 1}题，${q}`);
+  if (SC_EXPANDED && SC_FORM) {
+    SC_FORM.phq9.items.forEach((q, i) => list.push(`PHQ-9 第${i + 1}题，${q}`));
+    SC_FORM.gad7.items.forEach((q, i) => list.push(`GAD-7 第${i + 1}题，${q}`));
+  }
+  let i = 0;
+  const next = () => { if (i < list.length) scSay(list[i++], next); };
+  next();
+}
+
+function scOpen() {
+  $("scWrap").hidden = false;
+  scLoad();
+}
+function scClose() { $("scWrap").hidden = true; }
+
+if ($("scaleBtn")) {
+  $("scaleBtn").addEventListener("click", scOpen);
+  if ($("idleScale")) $("idleScale").addEventListener("click", scOpen);
+  $("scClose").addEventListener("click", scClose);
+  $("scWrap").addEventListener("click", e => { if (e.target.id === "scWrap") scClose(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("scWrap").hidden) scClose(); });
+  $("scMore").addEventListener("click", () => scExpand(!SC_EXPANDED));
+  $("scReadAll").addEventListener("click", scReadAll);
+  $("scSubmit").addEventListener("click", scSubmit);
+  $("scWrap").addEventListener("click", e => {
+    const say = e.target.closest(".scsay");
+    if (say) {
+      const key = say.dataset.key, i = +say.dataset.i;
+      const items = (SC_FORM && SC_FORM[key] && SC_FORM[key].items) || [];
+      scSay(`${i + 1}. ${items[i] || ""}`);
+      return;
+    }
+    const opt = e.target.closest(".scopt");
+    if (opt) {
+      const box = opt.closest(".scopts");
+      const key = box.dataset.key, i = +box.dataset.i;
+      SC_ANS[key][i] = +opt.dataset.v;
+      box.querySelectorAll(".scopt").forEach(b => b.classList.toggle("on", b === opt));
+      scMsg("");
+    }
+  });
+  scLoad();
+}
+
+// 这里原来有关页面（含刷新）就自动 /control/stop 的逻辑，本意是「别让 Unity 和
+// 采集在后台空转」。但 beforeunload 在刷新、后退、浏览器回收标签页时都会触发，
+// 而服务端的 /control/stop 会把 Unity 成品一起杀掉 —— 表现就是「控制台刷新一下，
+// Unity 就没了」，演示时最不想看到这种情况。
+//
+// 现在改成不主动停：关掉页面只断开这个观看端，Unity 和采集继续跑，随时刷新回来
+// 都能接上画面。真要停就用「停止演示」按钮（时长上限也只在到点时提醒一次）。
+</script>
+
+</body>
+</html>

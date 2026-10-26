@@ -1,0 +1,47 @@
+# 环境与密钥
+.venv/
+.env
+
+# 运行数据
+.data/
+data/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Unity
+unity/Library/
+unity/Temp/
+unity/Logs/
+unity/obj/
+# 训练会话记录与报告（本地数据，不进仓库）
+sessions/
+
+# ── Unity 构建与缓存（体积大、可重建） ──
+UnityVR/Library/
+UnityVR/Temp/
+UnityVR/Logs/
+UnityVR/Obj/
+UnityVR/Build/
+UnityVR/Builds/
+UnityVR/render_states/
+UnityVR/*.apk
+UnityVR/*.unitypackage
+
+# ── 工作区与工具缓存 ──
+.deepworks/
+.opencode/node_modules/
+
+# ── 含个人信息的本机数据（脑电、会话、录音、量表） ──
+recordings/
+rec/
+*.jsonl
+
+# ── 系统 ──
+.DS_Store
+
+# ── 编辑器/Agent 工具配置（非项目产出） ──
+.opencode/

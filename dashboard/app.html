@@ -1,0 +1,1632 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NeuroBloom 脑境疗愈 · 治疗师控制台</title>
+<style>
+*,*::before,*::after{box-sizing:border-box}
+:root{
+  --bg:#f4f6f8; --surface:#fff; --line:#e6eaf0; --line-soft:#eef1f5;
+  --ink:#111827; --ink-2:#414b5a; --ink-3:#6b7484;
+  --brand:#0d9488; --brand-ink:#0b7c72; --brand-soft:#e8f5f3;
+  --warn:#b45309; --danger:#dc2626;
+  --r:12px; --sh:0 1px 2px rgba(17,24,39,.04);
+}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--ink);font-size:13.5px;line-height:1.5;
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro SC","PingFang SC","Helvetica Neue",Arial,sans-serif;
+  -webkit-font-smoothing:antialiased; overflow:hidden;
+}
+h1,h2,h3,p,ul{margin:0;padding:0}
+ul{list-style:none}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+b,strong{font-weight:600}
+.num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+
+/* ---------- 外壳：左侧竖栏 + 右侧内容 ---------- */
+.shell{display:grid;grid-template-columns:214px minmax(0,1fr);height:100vh}
+
+.side{background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:16px 12px 12px}
+.brand{display:flex;align-items:center;gap:10px;padding:2px 6px 0}
+.brand-mark{width:32px;height:32px;border-radius:9px;background:linear-gradient(145deg,#14b8a6,#0b7c72);display:grid;place-items:center;box-shadow:0 2px 6px rgba(13,148,136,.28)}
+.brand-mark svg{width:17px;height:17px}
+.brand-tx b{display:block;font-size:13.5px;letter-spacing:-.1px}
+.brand-tx span{display:block;font-size:10.5px;color:var(--ink-3);letter-spacing:.4px}
+
+.nav{margin-top:20px;display:flex;flex-direction:column;gap:2px}
+.nav-item{display:flex;align-items:center;gap:10px;height:37px;padding:0 10px;border-radius:8px;font-size:13px;color:var(--ink-2);transition:background .12s,color .12s;text-align:left;width:100%}
+.nav-item svg{width:16px;height:16px;flex:0 0 16px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;opacity:.85}
+.nav-item:hover{background:#f3f5f8;color:var(--ink)}
+.nav-item.on{background:var(--brand-soft);color:var(--brand-ink);font-weight:600}
+.nav-item.on svg{opacity:1}
+.nav-item .soon{margin-left:auto;font-size:9.5px;color:var(--ink-3);background:#f1f3f7;border-radius:4px;padding:1px 5px;font-weight:400}
+.nav-item.on .soon{color:var(--brand-ink);background:#d3ece8}
+
+.side-foot{margin-top:auto;padding-top:12px;border-top:1px solid var(--line-soft)}
+.dev-pill{display:flex;align-items:center;gap:8px;width:100%;height:34px;padding:0 9px;border-radius:8px;border:1px solid var(--line);font-size:12px;color:var(--ink-2);transition:background .12s}
+.dev-pill:hover{background:#f7f9fb}
+.dev-pill i{width:7px;height:7px;border-radius:50%;background:#cbd2dc;flex:0 0 7px}
+.dev-pill.on i{background:#10b981;box-shadow:0 0 0 3px rgba(16,185,129,.14)}
+.dev-pill b{margin-left:auto;font-size:10.5px;color:var(--ink-3);font-weight:400}
+.ver{padding:8px 9px 0;font-size:10.5px;color:#98a1b0}
+
+/* ---------- 内容区 ---------- */
+.main{overflow-y:auto;overflow-x:hidden;height:100vh}
+#toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(10px);
+  max-width:560px;padding:10px 14px;border-radius:9px;background:#3a2f1b;color:#fdf3dd;
+  font-size:12.5px;line-height:1.55;box-shadow:0 8px 26px rgba(0,0,0,.18);
+  opacity:0;pointer-events:none;transition:opacity .18s ease,transform .18s ease;z-index:99}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+.na{color:#c6ccd5!important;font-weight:500}
+.simbar{flex:0 0 auto;display:flex;align-items:center;gap:10px;margin:0 0 12px;
+  padding:9px 13px;border:1px solid #f0dcb4;background:#fdf7e9;border-radius:9px;
+  font-size:12.5px;color:#8a5d1a;line-height:1.5}
+.simbar b{color:#7a4f14}
+.simbar.demo{background:#fdf1e2;border-color:#eccb95}
+.simbar .sp{flex:1}
+.wrap{max-width:1240px;margin:0 auto;padding:26px 30px 34px;height:100%;min-height:0;display:flex;flex-direction:column}
+
+.page{display:none}
+.page.on{display:flex;flex-direction:column;flex:1;min-height:0}
+
+.head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:20px}
+.head h1{font-size:21px;letter-spacing:-.4px;font-weight:650}
+.head p{margin-top:5px;font-size:12.5px;color:#606a7a}
+.head-act{display:flex;align-items:center;gap:10px;flex:0 0 auto;padding-top:2px}
+
+.chip-live{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface);font-size:12px;color:var(--ink-2)}
+.chip-live i{width:6px;height:6px;border-radius:50%;background:#cbd2dc}
+.chip-live.on i{background:#10b981;animation:blink 1.8s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+
+.btn{height:36px;padding:0 15px;border-radius:9px;border:1px solid var(--line);background:var(--surface);font-size:13px;font-weight:500;color:var(--ink);transition:.12s;display:inline-flex;align-items:center;gap:7px}
+.btn:hover{background:#f7f9fb;border-color:#d8dee8}
+.btn.primary{background:#0f766e;border-color:#0f766e;color:#fff;box-shadow:0 1px 2px rgba(15,118,110,.32)}
+.btn.primary:hover{background:#0b5f59;border-color:#0b5f59}
+.btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
+
+/* ---------- 卡片 ---------- */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh);padding:16px 17px 15px;min-width:0}
+.card-hd{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.card-hd h2{font-size:12.5px;font-weight:600;color:var(--ink-2);letter-spacing:.1px}
+.tag{margin-left:auto;font-size:10.5px;font-weight:500;color:var(--ink-3);background:#f4f6f9;border-radius:5px;padding:2px 7px;white-space:nowrap}
+.tag.ok{color:var(--brand-ink);background:var(--brand-soft)}
+.tag.warn{color:var(--warn);background:#fef3e2}
+
+.row-hero{display:grid;grid-template-columns:1.34fr 1fr 1fr;gap:13px;align-items:stretch}
+.row-hero .card{display:flex;flex-direction:column}
+
+/* 放松度环形 */
+.hero-relax{align-items:center;text-align:center}
+.hero-relax .card-hd{width:100%;text-align:left}
+.ring{
+  --p:0; --c1:#5ec8dd; --c2:#7fc45a;
+  width:132px;height:132px;border-radius:50%;position:relative;flex:0 0 auto;margin:2px auto 0;
+  background:conic-gradient(from -90deg, var(--c1) 0deg,
+    color-mix(in srgb, var(--c1) 55%, var(--c2)) calc(var(--p) * 180deg),
+    var(--c2) calc(var(--p) * 360deg),
+    #eef1f5 calc(var(--p) * 360deg) 360deg);
+  transition:background .45s ease;
+}
+.ring-mask{position:absolute;inset:11px;border-radius:50%;background:var(--surface);display:grid;place-items:center}
+.ring-num b{display:block;font-size:31px;font-weight:650;letter-spacing:-1px;line-height:1.05;font-variant-numeric:tabular-nums}
+.ring-num b small{font-size:14px;font-weight:500;color:var(--ink-3);margin-left:1px}
+.ring-num span{display:block;font-size:9.5px;letter-spacing:1.4px;color:var(--ink-3);margin-top:3px}
+.state-word{margin-top:13px;font-size:14px;font-weight:600;color:var(--ink)}
+.state-word.bad{color:var(--ink-3);font-weight:500}
+.state-word.warn{color:var(--warn)}
+.hint{margin-top:5px;font-size:11.5px;color:var(--ink-3);line-height:1.45;max-width:100%}
+.hint b{color:var(--ink-2);font-weight:600}
+
+/* 专注度 */
+.big{font-size:33px;font-weight:650;letter-spacing:-1.2px;line-height:1;font-variant-numeric:tabular-nums}
+.big small{font-size:15px;color:var(--ink-3);font-weight:500;margin-left:2px;letter-spacing:0}
+.track{height:6px;border-radius:99px;background:#eef1f5;margin-top:12px;overflow:hidden}
+.track i{display:block;height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,#14b8a6,#5ec8dd);transition:width .5s ease}
+.note{margin-top:11px;font-size:11.5px;color:var(--ink-3);line-height:1.5}
+.mini{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:auto;padding-top:12px;border-top:1px solid var(--line-soft)}
+.mini div{display:flex;flex-direction:column;gap:1px}
+.mini span{font-size:11px;color:var(--ink-3)}
+.mini b{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
+.goal{margin-top:auto;padding-top:12px;border-top:1px solid var(--line-soft)}
+.goal-line{display:flex;justify-content:space-between;font-size:11px;color:var(--ink-3);margin-bottom:7px}
+.goal-line b{color:var(--ink-2);font-weight:600}
+.goal-bar{height:5px;border-radius:99px;background:#eef1f5;overflow:hidden}
+.goal-bar i{display:block;height:100%;width:42%;border-radius:99px;background:var(--brand)}
+
+.kv{margin-top:2px}
+.kv li{display:flex;align-items:baseline;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line-soft)}
+.kv li:last-child{border-bottom:0;padding-bottom:0}
+.kv span{font-size:12px;color:var(--ink-3)}
+.kv b{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.2px}
+.kv b em{font-style:normal;font-size:11px;color:var(--ink-3);font-weight:400;margin-left:1px}
+.kv-tight li{padding:4.5px 0}
+.kv-tight b{font-size:13.5px;color:var(--ink-2)}
+.kv-tight li:last-child{padding-bottom:0}
+
+/* 趋势图 */
+.trend{margin-top:13px;flex:1;display:flex;flex-direction:column;min-height:190px}
+.chart{position:relative;flex:1;min-height:150px;margin:0 -2px}
+.chart svg{display:block;width:100%;height:100%;overflow:visible}
+.axis{display:flex;justify-content:space-between;font-size:10.5px;color:var(--ink-3);margin-top:6px;padding:0 2px}
+
+.row-two{display:grid;grid-template-columns:1fr 1fr;gap:13px;margin-top:13px}
+
+/* 占位页 */
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;height:calc(100vh - 140px);color:var(--ink-3)}
+.empty i{width:44px;height:44px;border-radius:12px;border:1px dashed #d5dbe5;display:grid;place-items:center;margin-bottom:14px}
+.empty i svg{width:19px;height:19px;stroke:#b6bfcd;fill:none;stroke-width:1.6}
+.empty h2{font-size:14px;color:var(--ink-2);font-weight:600}
+.empty p{margin-top:6px;font-size:12px;max-width:330px;line-height:1.6}
+
+@media (max-width:1180px){
+  .row-hero{grid-template-columns:1fr 1fr}
+  .hero-relax{grid-column:1/-1}
+}
+
+  /* ---------- 数据页：信号与判据 ---------- */
+  .link-btn{display:inline-flex;align-items:center;gap:4px;margin-top:8px;padding:0;border:0;background:none;
+    color:var(--brand-ink);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
+  .link-btn:hover{color:#0b5f59;text-decoration:underline}
+  /* 16 通道波形：照着 OpenBCI GUI 的 Time Series 做 —— 一条道一个通道，
+     左边编号徽章 + 量程，右边贴顶比例/有效值，共用一条 5 秒时间轴。 */
+  .proof-grid{display:grid;grid-template-columns:minmax(0,1fr) 372px;gap:16px;
+    margin-top:14px;flex:1;min-height:0}
+  .proof-side{display:flex;flex-direction:column;gap:14px;min-height:0}
+  .ts{display:flex;flex-direction:column;min-height:0;padding:14px 14px 10px}
+  .ts-bar{display:flex;align-items:center;gap:14px;font-size:11px;color:var(--ink-3);
+    padding:0 0 7px;margin-bottom:2px;border-bottom:1px solid var(--line-soft)}
+  .ts-bar b{color:var(--ink-2);font-weight:600;font-variant-numeric:tabular-nums}
+  .ts-bar .sp{flex:1}
+  .ts-body{flex:1;min-height:0;display:grid;grid-template-columns:30px minmax(0,1fr) 124px;gap:5px}
+  .ts-badges,.ts-stats{display:grid;grid-template-rows:repeat(16,1fr);min-height:0}
+  .ts-badges>div{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px}
+  .ts-badges .bdg{width:17px;height:17px;border-radius:50%;color:#fff;font-size:9.5px;font-weight:600;
+    display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums}
+  .ts-badges em{font-style:normal;font-size:8.5px;color:#aab2bd;font-variant-numeric:tabular-nums}
+  .ts-stats>div{display:flex;flex-direction:column;justify-content:center;gap:1px;
+    font-size:9px;line-height:1.15;color:#8b95a3;text-align:right;font-variant-numeric:tabular-nums}
+  .ts-stats .rl.bad{color:#d64545;font-weight:600}
+  .ts-stats em{font-style:normal;color:#b6bec9}
+  #tsCanvas{display:block;width:100%;height:100%}
+  .ts-empty{margin-top:8px;padding:7px 11px;border:1px dashed #e2e7ee;border-radius:8px;
+    background:#fbfcfd;display:flex;flex-wrap:wrap;align-items:baseline;gap:8px}
+  .ts-empty b{font-size:12px;color:var(--ink-2);font-weight:600}
+  .ts-empty p{margin:0;font-size:11.5px;line-height:1.6;color:var(--ink-3)}
+  .ts-empty .why2{margin-top:2px;font-size:11.5px;color:#b0782a;background:#fdf6e7;
+    border:1px solid #f3e3c3;border-radius:7px;padding:7px 11px;max-width:520px}
+  .band-row{display:grid;grid-template-columns:30px 1fr 62px;gap:10px;align-items:center;margin:0 0 12px}
+  .band-row .nm{font-size:13px;font-weight:600;color:var(--ink-2)}
+  .band-row .bar{height:9px;border-radius:5px;background:#eef1f5;overflow:hidden}
+  .band-row .bar i{display:block;height:100%;border-radius:5px;transition:width .45s ease}
+  .band-row .vl{text-align:right;font-size:12.5px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+  .steps{list-style:none;margin:2px 0 0;padding:0}
+  .steps li{display:grid;grid-template-columns:76px 1fr;gap:10px;padding:7px 0;border-bottom:1px dashed var(--line-soft)}
+  .steps li:last-child{border-bottom:0}
+  .steps .k{font-size:12.5px;color:var(--ink-3)}
+  .steps p{margin:0;font-size:13.5px;line-height:1.45;color:var(--ink)}
+  .steps b{font-weight:650;font-variant-numeric:tabular-nums}
+  .ruler{margin-top:14px}
+  .ruler-bar{position:relative;height:10px;border-radius:5px;overflow:visible;display:flex;background:#f3f5f8}
+  .ruler-bar i{height:100%}
+  .ruler-bar i:first-child{border-radius:5px 0 0 5px}
+  .ruler-bar i:last-of-type{border-radius:0 5px 5px 0}
+  .ruler-pin{position:absolute;top:-4px;width:2px;height:18px;background:#111827;border-radius:1px;transform:translateX(-1px);transition:left .4s ease}
+  .ruler-scale{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink-3);margin-top:6px}
+  .why{list-style:none;margin:14px 0 0;padding:12px 0 0;border-top:1px solid var(--line-soft);
+    display:grid;gap:6px;font-size:12.5px;line-height:1.5;color:var(--ink-3)}
+  .why b{color:var(--ink-2);margin-right:6px}
+
+  /* ---------- 训练页 ---------- */
+  .train-grid{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;
+    gap:16px;flex:1;min-height:0}
+  .stage{position:relative;padding:0;overflow:hidden;min-height:0}
+  #stage{display:block;width:100%;height:100%;background:#eef2f5}
+  .stage-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:9px;background:radial-gradient(circle at 50% 42%,#eef7f5,#e7eef2 72%);color:var(--ink-2);text-align:center;padding:20px}
+  .stage-empty i{width:52px;height:52px;border-radius:16px;background:#fff;display:grid;place-items:center;box-shadow:0 2px 10px #0f17201a}
+  .stage-empty i svg{width:25px;height:25px;stroke:var(--brand);fill:none;stroke-width:1.7}
+  .stage-empty b{font-size:15px}
+  .stage-empty span{font-size:12.5px;color:var(--ink-3);max-width:280px;line-height:1.55}
+  .stage-empty.hide{display:none}
+  .train-side{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+  .big small{font-size:13px;color:var(--ink-3);margin-left:6px;font-weight:500}
+
+  /* ---------- 随访页 ---------- */
+  .follow-grid{display:grid;grid-template-columns:minmax(0,1fr) 470px;gap:16px;flex:1;min-height:0}
+  .form{display:flex;flex-direction:column;min-height:0}
+  .form .scroll{overflow:auto;min-height:0;flex:1;padding-right:4px}
+  .qa{display:grid;gap:2px}
+  .qrow{padding:9px 0;border-bottom:1px dashed var(--line-soft)}
+  .qrow:last-child{border-bottom:0}
+  .qrow .qt{font-size:13.5px;color:var(--ink);margin-bottom:8px;line-height:1.45}
+  .qrow .qt b{color:var(--ink-3);font-weight:600;margin-right:6px}
+  .opts{display:flex;gap:6px;flex-wrap:wrap}
+  .opt{border:1px solid var(--line);background:#fff;border-radius:9px;padding:6px 10px;
+    font-size:12.5px;color:var(--ink-2);cursor:pointer;transition:all .15s}
+  .opt:hover{border-color:#c9d3dd;background:#fafbfc}
+  .opt.on{background:var(--brand-soft);border-color:var(--brand);color:var(--brand-ink);font-weight:600}
+  h4.sec{font-size:12.5px;color:var(--ink-3);font-weight:600;margin:14px 0 4px}
+  .form-foot{display:flex;gap:10px;align-items:center;padding-top:14px;margin-top:auto;border-top:1px solid var(--line-soft)}
+  .form-foot input{border:1px solid var(--line);border-radius:9px;padding:8px 11px;font:inherit;font-size:13px;
+    color:var(--ink);width:170px;background:#fff}
+  .form-foot input:focus{outline:2px solid #0d948833;border-color:var(--brand)}
+  .msg{font-size:12.5px;color:var(--ink-3)}
+  .msg.ok{color:var(--brand-ink)}
+  .lvl{font-size:28px;font-weight:650;letter-spacing:-.02em;margin:2px 0 4px}
+  .lvl.red{color:#b91c1c}.lvl.yellow{color:#b45309}.lvl.green{color:#0b7c72}
+  .trlist{margin:10px 0 0;padding-left:16px;font-size:12.5px;color:var(--ink-2);line-height:1.62}
+  .trlist li{margin-bottom:3px}
+  .hist{display:grid;gap:0;max-height:250px;overflow:auto;margin-top:2px}
+  .hist .it{display:flex;justify-content:space-between;gap:8px;font-size:12.5px;color:var(--ink-2);
+    padding:9px 0;border-bottom:1px dashed var(--line-soft)}
+  .hist .it:last-child{border-bottom:0}
+  .hist .it b{font-weight:600;color:var(--ink)}
+  .hist .empty{font-size:12.5px;color:var(--ink-3);padding:10px 0}
+  .follow-side{display:flex;flex-direction:column;gap:16px;min-height:0;overflow:auto}
+@media (max-height:880px){
+    .wrap{padding:18px 30px 18px}
+    .head{margin-bottom:14px}
+  }
+
+  /* ---------- 按钮补充 ---------- */
+  .btn[hidden]{display:none!important}
+  .btn.ghost{background:#fff;border:1px solid var(--line);color:var(--ink-2);box-shadow:none}
+  .btn.ghost:hover{background:#f7f9fb;border-color:#c9d3dd;color:var(--ink)}
+  .btn.stop{background:#fff;border:1px solid #f0d5d5;color:#b91c1c;box-shadow:none}
+  .btn.stop:hover{background:#fdf3f3;border-color:#e7bcbc}
+
+  /* ---------- 训练页画面 ---------- */
+  .stage img{width:100%;height:100%;object-fit:cover;display:block;background:#eef2f5}
+
+  /* ---------- 设备页 ---------- */
+  .dev-grid{display:grid;grid-template-columns:400px minmax(0,1fr);gap:16px;flex:1;min-height:0}
+  .dev-side{display:flex;flex-direction:column;gap:16px;min-height:0;overflow:auto}
+  .fld{display:grid;gap:6px;margin-bottom:14px}
+  .fld label{font-size:12.5px;color:var(--ink-3);font-weight:600}
+  .fld input,.fld select{border:1px solid var(--line);border-radius:9px;padding:9px 11px;
+    font:inherit;font-size:13px;color:var(--ink);background:#fff;width:100%}
+  .fld input:focus,.fld select:focus{outline:2px solid #0d948833;border-color:var(--brand)}
+  .dev-actions{display:flex;gap:10px;margin-top:4px;flex-wrap:wrap}
+  .dev-hint{margin-top:14px;font-size:12.5px;color:var(--ink-3);line-height:1.65}
+  .dev-stat{font-size:26px;font-weight:650;letter-spacing:-.02em;margin:2px 0 10px}
+  .dev-stat.ok{color:#0b7c72}.dev-stat.warn{color:#b45309}.dev-stat.off{color:var(--ink-3)}
+  .steps{margin:0;padding-left:18px;font-size:12.5px;color:var(--ink-2);line-height:1.75}
+  .steps b{color:var(--ink)}
+  /* 设备页「接真板的三步」：普通编号列表。之前误用了 .steps（那是带 76px 标签列的
+     grid），整段文字被挤进 76px 窄栏，换行乱成一团。 */
+  .howto{margin:2px 0 0;padding-left:20px;font-size:13.5px;line-height:1.6;color:var(--ink)}
+  .howto li{padding:5px 0;border-bottom:1px dashed var(--line-soft)}
+  .howto li:last-child{border-bottom:0}
+  .howto b{font-weight:650;color:var(--ink)}
+</style>
+</head>
+<body class="blind">
+<div id="toast" role="status"></div>
+<div class="shell">
+  <aside class="side">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 21c0-5 3-8 7-8-1 5-4 7-7 8z"/><path d="M12 21c0-5-3-8-7-8 1 5 4 7 7 8z"/><path d="M12 21V9"/>
+        </svg>
+      </div>
+      <div class="brand-tx"><b>NeuroBloom</b><span>脑境疗愈</span></div>
+    </div>
+
+    <nav class="nav">
+      <button class="nav-item on" data-page="overview">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/></svg>
+        总览
+      </button>
+      <button class="nav-item" data-page="train">
+        <svg viewBox="0 0 24 24"><path d="M3 12h3l2.5-7 3 14L14 9l2 3h5"/></svg>
+        实时训练
+      </button>
+      <button class="nav-item" data-page="data">
+        <svg viewBox="0 0 24 24"><path d="M4 20V10M9 20V4M14 20v-7M19 20V7"/></svg>
+        数据
+      </button>
+      <button class="nav-item" data-page="follow">
+        <svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2.4"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+        随访
+      </button>
+      <button class="nav-item" data-page="device">
+        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4M7 10h2l1.5-2 2 4 1.5-2h3"/></svg>
+        设备
+      </button>
+    </nav>
+
+    <div class="side-foot">
+      <button class="dev-pill" id="devBtn"><i></i>设备状态<b id="devText">未连接</b></button>
+      <div class="ver">v1.0 · 治疗师端</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="wrap">
+      <div class="simbar" id="simBar" hidden>
+        <span><b>现在没有连接采集板。</b>连上之前，这里不显示任何数字、曲线或画面——
+          不猜、不补、也不用合成数据代填。横幅消失，才说明是真设备在采。</span>
+        <span class="sp"></span>
+        <button class="btn ghost sm" type="button" id="demoBtn">演示（非脑电）</button>
+        <button class="btn ghost sm" type="button" id="simBarGo">去连接设备</button>
+      </div>
+      <!-- ============ 总览 ============ -->
+      <section class="page on" id="p-overview">
+        <div class="head">
+          <div>
+            <h1>总览</h1>
+            <p id="subDate">—</p>
+          </div>
+          <div class="head-act">
+            <span class="chip-live" id="liveChip"><i></i><span class="num" id="liveTime">00:00</span></span>
+            <button class="btn stop" id="ovStop" hidden>停止</button>
+            <button class="btn primary" id="startBtn">
+              <svg viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5-13-7.5z" fill="currentColor" stroke="none"/></svg>
+              开始训练
+            </button>
+          </div>
+        </div>
+
+        <div class="row-hero">
+          <article class="card hero-relax">
+            <div class="card-hd"><h2>放松度</h2><span class="tag" id="goodTag">—</span></div>
+            <div class="ring" id="ring">
+              <div class="ring-mask">
+                <div class="ring-num"><b id="relaxVal">—</b><span>RELAX</span></div>
+              </div>
+            </div>
+            <div class="state-word bad" id="stateWord">等待数据</div>
+            <div class="hint" id="relaxSub">还没有收到脑电状态</div>
+            <button class="link-btn" id="toProof">看波形与算法依据 →</button>
+          </article>
+
+          <article class="card">
+            <div class="card-hd"><h2>专注度</h2><span class="tag">β / θ</span></div>
+            <div class="big"><span id="vFocus">—</span></div>
+            <div class="track"><i id="fFocus" style="width:0"></i></div>
+            <p class="note">与放松度独立计算，反映此刻注意力的集中程度。</p>
+            <div class="mini">
+              <div><span>本段峰值</span><b id="fPeak">—</b></div>
+              <div><span>本段平均</span><b id="fAvg">—</b></div>
+            </div>
+          </article>
+
+          <article class="card">
+            <div class="card-hd"><h2>今日</h2><span class="tag" id="todayTag">未开始</span></div>
+            <ul class="kv">
+              <li><span>训练时长</span><b id="todayMin">—<em>分</em></b></li>
+              <li><span>平均放松</span><b id="todayAvg">—</b></li>
+              <li><span>连续天数</span><b id="todayStreak">—<em>天</em></b></li>
+            </ul>
+            <div class="goal">
+              <div class="goal-line"><span>今日目标 30 分钟</span><b id="goalPct">—%</b></div>
+              <div class="goal-bar"><i id="goalFill" style="width:0"></i></div>
+            </div>
+          </article>
+        </div>
+
+        <article class="card trend">
+          <div class="card-hd"><h2>本次训练 · 放松度走势</h2><span class="tag" id="trendTag">近 60 秒</span></div>
+          <div class="chart">
+            <svg id="spark" viewBox="0 0 1000 158" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="gArea" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#0d9488" stop-opacity=".16"/>
+                  <stop offset="100%" stop-color="#0d9488" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <g stroke="#eef1f5" stroke-width="1">
+                <line x1="0" y1="10" x2="1000" y2="10"/>
+                <line x1="0" y1="44" x2="1000" y2="44"/>
+                <line x1="0" y1="79" x2="1000" y2="79"/>
+                <line x1="0" y1="114" x2="1000" y2="114"/>
+                <line x1="0" y1="148" x2="1000" y2="148"/>
+              </g>
+              <path id="sArea" fill="url(#gArea)" d=""/>
+              <path id="sLine" fill="none" stroke="#0d9488" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" d=""/>
+              <circle id="sDot" r="3.5" fill="#fff" stroke="#0d9488" stroke-width="2" cx="-10" cy="-10"/>
+            </svg>
+          </div>
+          <div class="axis"><span>60 秒前</span><span>45 秒</span><span>30 秒</span><span>15 秒</span><span>现在</span></div>
+        </article>
+
+        <div class="row-two">
+          <article class="card">
+            <div class="card-hd"><h2>本次训练</h2><span class="tag" id="runTag">未开始</span></div>
+            <ul class="kv">
+              <li><span>训练策略</span><b id="runStrat">—</b></li>
+              <li><span>当前轮次</span><b id="runRound">—</b></li>
+              <li><span>采集板</span><b id="runBoard">—</b></li>
+            </ul>
+          </article>
+          <article class="card">
+            <div class="card-hd"><h2>世界参数</h2><span class="tag" id="worldTag">未连接</span></div>
+            <ul class="kv kv-tight">
+              <li><span>阳光</span><b id="wSun">—</b></li>
+              <li><span>雾气</span><b id="wFog">—</b></li>
+              <li><span>花开</span><b id="wBloom">—</b></li>
+              <li><span>水晶</span><b id="wCrystal">—</b></li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <!-- ============ 其余三页 ============ -->
+      <section class="page" id="p-train">
+        <div class="head">
+          <div>
+            <h1>实时训练</h1>
+            <p>画面由脑电驱动，策略只调制氛围，不替代脑电</p>
+          </div>
+          <div class="head-act">
+            <span class="tag" id="trainTag">未开始</span>
+            <button class="btn stop" id="trainStop" hidden>停止</button>
+            <button class="btn primary" id="trainBtn">
+              <svg viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5-13-7.5z" fill="currentColor" stroke="none"/></svg>
+              开始训练
+            </button>
+          </div>
+        </div>
+
+        <div class="train-grid">
+          <article class="card stage">
+            <img id="stage" alt="" />
+            <div class="stage-empty" id="stageEmpty">
+              <i><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2.2"/><path d="M8 21h8M12 18v3"/></svg></i>
+              <b>画面待唤醒</b>
+              <span>点右上角「开始训练」，Unity 场景会在这里铺满显示。没有采集板时这里保持空着；只想先看数字和波形，用上方的「演示」。</span>
+            </div>
+          </article>
+
+          <div class="train-side">
+            <article class="card">
+              <div class="card-hd"><h2>当前状态</h2><span class="tag" id="tStateTag">—</span></div>
+              <div class="big"><span id="tRelax">—</span><small>放松度</small></div>
+              <div class="track"><i id="tFill" style="width:0"></i></div>
+              <p class="note" id="tGuide">等待开始训练。</p>
+            </article>
+            <article class="card">
+              <div class="card-hd"><h2>这一轮</h2><span class="tag" id="tRound">—</span></div>
+              <ul class="kv">
+                <li><span>训练策略</span><b id="tStrat">—</b></li>
+                <li><span>采集板</span><b id="tBoard">—</b></li>
+                <li><span>专注度</span><b id="tFocus">—</b></li>
+                <li><span>α / β</span><b id="tAb">—</b></li>
+              </ul>
+            </article>
+          </div>
+        </div>
+      </section>
+      <section class="page" id="p-data">
+        <div class="head">
+          <div>
+            <h1>信号与判据</h1>
+            <p>从频带功率到状态判定的每一步，都摆出来对着数字复核</p>
+          </div>
+          <div class="head-act"><span class="tag" id="proofTag">未连接</span></div>
+        </div>
+
+        <div class="proof-grid">
+        <article class="card ts">
+          <div class="card-hd" style="margin-bottom:8px">
+            <h2>16 通道原始波形</h2>
+            <span class="tag" id="tsMeta">采样率待定 · 5 秒窗</span>
+          </div>
+          <div class="ts-bar">
+            <span>Vert Scale <b id="tsScale">自动</b></span>
+            <span>Window <b>5 sec</b></span>
+            <span>通道 <b>16</b></span>
+            <span class="sp"></span>
+            <span id="tsSrc">等待数据</span>
+          </div>
+          <div class="ts-body" id="tsBody">
+            <div class="ts-badges" id="tsBadges"></div>
+            <canvas id="tsCanvas"></canvas>
+            <div class="ts-stats" id="tsStats"></div>
+          </div>
+          <div class="ts-empty" id="tsEmpty" style="display:none">
+            <b id="tsEmptyT">未连接采集板，这里没有波形</b>
+            <p id="tsEmptyP">上面没有线，是因为没有电极电压进来——不是信号太小，是没有信号。</p>
+            <div class="why2" id="tsEmptyW">把板子开机、电脑连上 WiFi「ExpandableEEGAP」，再到「设备」页点「连接并开始采集」。</div>
+          </div>
+          <div class="axis"><span>5 秒前</span><span>4</span><span>3</span><span>2</span><span>1</span><span>现在</span></div>
+          <p class="note" id="tsNote">每一行是一路电极的原始电压（µV），16 路共用一条自动量程；右边是这 5 秒的贴顶比例与有效值，
+            贴顶超过一半会标红（电极没贴好 / 放大器饱和的特征）。没有连接采集板时这里不画线——
+            没有电极电压进来，就没有波形。</p>
+        </article>
+
+        <div class="proof-side">
+          <article class="card">
+            <div class="card-hd"><h2>频带功率</h2><span class="tag" id="bandTag">µV²</span></div>
+            <div id="bandList"></div>
+            <p class="note" style="margin-top:auto">五个频带的能量占比，直接决定下面的比值。</p>
+          </article>
+
+          <article class="card">
+            <div class="card-hd"><h2>这个数是怎么算出来的</h2><span class="tag ok" id="okTag">等待数据</span></div>
+            <ol class="steps">
+              <li><span class="k">① 预处理</span><p>去直流 → 0.5–45 Hz 带通 → 4 秒一个窗口（重叠 50%）</p></li>
+              <li><span class="k">② 频带功率</span><p>Welch 谱 → 在 α 8–13 Hz、β 13–30 Hz 区间积分</p></li>
+              <li><span class="k">③ α / β</span><p><b id="fAb">—</b></p></li>
+              <li><span class="k">④ 相对基线</span><p>score = α/β ÷ 个人基线 <b id="fBase">—</b> = <b id="fScore">—</b></p></li>
+              <li><span class="k">⑤ 放松度</span><p>relax = 0.5 + 0.5 · log₂(score) = <b id="fRelax">—</b></p></li>
+              <li><span class="k">⑥ 分档</span><p><b id="fLabel">—</b>（≥0.65 放松 · ≤0.35 紧张）</p></li>
+            </ol>
+            <div class="ruler">
+              <div class="ruler-bar">
+                <i style="width:35%;background:#fbe3e3"></i><i style="width:30%;background:#eef1f5"></i><i style="width:35%;background:#d9f0eb"></i>
+                <span class="ruler-pin" id="rulerPin" style="left:50%"></span>
+              </div>
+              <div class="ruler-scale"><span>0 紧张</span><span>0.35</span><span>0.65</span><span>1 放松</span></div>
+            </div>
+            <ul class="why">
+              <li><b>为什么用相对基线</b>α/β 的绝对值个体差异能到 3 倍，固定阈值等于拿别人的尺子量自己。</li>
+              <li><b>为什么不只看 α</b>β 升高也可能是紧张或肌电，所以用 α/β 比值，另开一条 β/θ 专注轴。</li>
+              <li><b>交叉验证</b>当前 α 峰频 IAF <b id="fIaf">—</b> Hz，落在 8–13 Hz 内，说明 α 带没选错。</li>
+            </ul>
+          </article>
+        </div>
+        </div>
+      </section>
+      <section class="page" id="p-follow">
+        <div class="head">
+          <div>
+            <h1>情绪随访</h1>
+            <p>量表分与脑电趋势合并判断；题目统一从桥接取，不在这里另抄一份</p>
+          </div>
+          <div class="head-act"><span class="tag" id="scaleTag">量表待加载</span></div>
+        </div>
+
+        <div class="follow-grid">
+          <article class="card form">
+            <div class="scroll">
+              <div class="card-hd"><h2>PHQ-2 初筛</h2><span class="tag">2 题</span></div>
+              <div class="qa" id="qPhq2"></div>
+              <div style="margin-top:14px">
+                <button class="link-btn" id="foldBtn">展开完整量表 PHQ-9 / GAD-7 →</button>
+              </div>
+              <div id="moreScales" hidden>
+                <h4 class="sec">PHQ-9 抑郁（最近两周）</h4>
+                <div class="qa" id="qPhq9"></div>
+                <h4 class="sec">GAD-7 焦虑（最近两周）</h4>
+                <div class="qa" id="qGad7"></div>
+              </div>
+            </div>
+            <div class="form-foot">
+              <input id="pidInput" placeholder="编号（可留空）" />
+              <button class="btn primary" id="subBtn">提交评估</button>
+              <span class="msg" id="formMsg"></span>
+            </div>
+          </article>
+
+          <div class="follow-side">
+            <article class="card">
+              <div class="card-hd"><h2>评估结果</h2><span class="tag" id="lvlTag">未评估</span></div>
+              <div class="lvl" id="lvlBig">—</div>
+              <p class="note" id="resNote">做完 PHQ-2 两题就能出初筛结果。</p>
+              <ul class="trlist" id="resReasons"></ul>
+            </article>
+            <article class="card">
+              <div class="card-hd"><h2>历史随访</h2><span class="tag" id="histTag">0 次</span></div>
+              <div class="hist" id="histList"></div>
+            </article>
+          </div>
+        </div>
+      </section>
+      <section class="page" id="p-device">
+        <div class="head">
+          <div>
+            <h1>设备与采集</h1>
+            <p>在这里直连采集板，不经过 OpenBCI GUI；探不到板子就保持空态，不退回合成数据</p>
+          </div>
+          <div class="head-act">
+            <span class="tag" id="devTag">未连接</span>
+            <button class="btn ghost" id="devRefresh">重新检测</button>
+          </div>
+        </div>
+
+        <div class="dev-grid">
+          <article class="card">
+            <div class="card-hd"><h2>连接设置</h2><span class="tag">本机直连</span></div>
+            <div class="fld">
+              <label>板卡型号</label>
+              <select id="devBoard"></select>
+            </div>
+            <div class="fld">
+              <label>板子 IP</label>
+              <input id="devIp" placeholder="192.168.4.1" />
+            </div>
+            <div class="fld">
+              <label>本机端口（不是板子的端口）</label>
+              <input id="devPort" placeholder="6677" />
+            </div>
+            <div class="dev-actions">
+              <button class="btn primary" id="devConnect">连接并开始采集</button>
+              <button class="btn stop" id="devStop">断开 / 停止</button>
+            </div>
+            <p class="dev-hint" id="devHint">正在读取设备状态…</p>
+          </article>
+
+          <div class="dev-side">
+            <article class="card">
+              <div class="card-hd"><h2>当前状态</h2><span class="tag" id="devModeTag">—</span></div>
+              <div class="dev-stat off" id="devStat">未连接</div>
+              <ul class="kv">
+                <li><span>板卡</span><b id="devKvBoard">—</b></li>
+                <li><span>探测</span><b id="devKvProbe">—</b></li>
+                <li><span>最近错误</span><b id="devKvErr">—</b></li>
+              </ul>
+            </article>
+            <article class="card">
+              <div class="card-hd"><h2>接真板的三步</h2></div>
+              <ol class="howto">
+                <li>板子开机，电脑连它的 WiFi：<b>ExpandableEEGAP</b>，密码 <b>abcd1234</b></li>
+                <li>上面点「重新检测」，探测显示延迟（毫秒）就说明通了</li>
+                <li>点「连接并开始采集」—— 分析链路一行不改，数据结构完全相同</li>
+              </ol>
+              <p class="dev-hint">没有板子时界面保持空态：不显示任何数字，也不会有假波形。</p>
+            </article>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const WS_URL = "ws://127.0.0.1:8765/ws/world";
+
+  /* ---------- 页面切换 ---------- */
+  const names = { overview: "p-overview", train: "p-train", data: "p-data", follow: "p-follow", device: "p-device" };
+  document.querySelectorAll(".nav-item").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".nav-item").forEach((b) => b.classList.toggle("on", b === btn));
+      Object.entries(names).forEach(([k, id]) => $(id).classList.toggle("on", k === btn.dataset.page));
+      document.querySelector(".main").scrollTop = 0;
+      if (btn.dataset.page === "data") setTimeout(() => { _tsFitW = 0; fitTSIfNeeded(); drawTS(); }, 30);
+      if (btn.dataset.page === "train") setTimeout(fitStage, 30);
+      if (btn.dataset.page === "device") setTimeout(() => loadDevice(true), 30);
+      history.replaceState(null, "", "#" + btn.dataset.page);
+    });
+  });
+
+  /* ---------- 开始训练 ---------- */
+  let _toastT = 0;
+  function notice(msg) {
+    const t = $("toast");
+    if (!t) return;
+    t.textContent = msg;
+    t.classList.add("on");
+    clearTimeout(_toastT);
+    _toastT = setTimeout(() => t.classList.remove("on"), 6000);
+  }
+  window.notice = notice;
+
+  $("startBtn").addEventListener("click", () => {
+    $("startBtn").disabled = true;
+    $("startBtn").textContent = "启动中…";
+    fetch("http://127.0.0.1:8765/control/start")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d && d.ok === false) {
+          notice(d.reason || "启动失败：没有可用的采集板。");
+          const nav = document.querySelector('.nav-item[data-page="device"]');
+          if (nav) nav.click();
+        }
+      })
+      .catch(() => {})
+      .finally(() => setTimeout(() => {
+        $("startBtn").disabled = false;
+        $("startBtn").innerHTML = '<svg viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5-13-7.5z" fill="currentColor" stroke="none"/></svg>开始训练';
+      }, 1600));
+  });
+
+  /* ---------- 日期 ---------- */
+  const d = new Date();
+  const wd = ["周日","周一","周二","周三","周四","周五","周六"][d.getDay()];
+  $("subDate").textContent = `${d.getMonth() + 1}月${d.getDate()}日 ${wd} · 治疗师端`;
+
+  /* ---------- 走势图 ---------- */
+  const W = 1000, H = 158, PAD = 6;
+  const hist = [];
+  function drawSpark() {
+    if (hist.length < 2) { $("sLine").setAttribute("d", ""); $("sArea").setAttribute("d", ""); $("sDot").setAttribute("cx", -10); return; }
+    const n = hist.length;
+    const pts = hist.map((v, i) => {
+      const x = (i / (n - 1)) * W;
+      const y = H - PAD - v * (H - PAD * 2);
+      return [x, y];
+    });
+    let line = `M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
+    for (let i = 1; i < pts.length; i++) {
+      const [x0, y0] = pts[i - 1], [x1, y1] = pts[i];
+      const cx = (x0 + x1) / 2;
+      line += ` C${cx.toFixed(1)},${y0.toFixed(1)} ${cx.toFixed(1)},${y1.toFixed(1)} ${x1.toFixed(1)},${y1.toFixed(1)}`;
+    }
+    $("sLine").setAttribute("d", line);
+    $("sArea").setAttribute("d", `${line} L${W},${H} L0,${H} Z`);
+    const last = pts[pts.length - 1];
+    $("sDot").setAttribute("cx", last[0].toFixed(1));
+    $("sDot").setAttribute("cy", last[1].toFixed(1));
+  }
+
+  /* ---------- 数据 ---------- */
+  const dict = {
+    relaxed: ["放松", ""], tense: ["紧绷", "warn"], neutral: ["平稳", ""],
+    calibrating: ["正在标定基线", "bad"], invalid: ["信号无效", "bad"],
+  };
+  const state = { relax: null, focus: null, label: "", nGood: null, board: null, startedAt: null, live: false };
+
+  function paint() {
+    const r = state.relax;
+    if (typeof r === "number") {
+      $("relaxVal").innerHTML = `${Math.round(r * 100)}<small>%</small>`;
+      const ring = $("ring");
+      ring.style.setProperty("--p", Math.max(0, Math.min(1, r)));
+      const low = r < 0.4;
+      ring.style.setProperty("--c1", low ? "#fb7185" : "#14b8a6");
+      ring.style.setProperty("--c2", low ? "#f472b6" : "#7fc45a");
+    }
+    const w = dict[state.label] || ["等待数据", "bad"];
+    $("stateWord").textContent = w[0];
+    $("stateWord").className = "state-word " + w[1];
+
+    $("vFocus").textContent = typeof state.focus === "number" ? `${Math.round(state.focus * 100)}%` : "—";
+    $("fFocus").style.width = typeof state.focus === "number" ? `${state.focus * 100}%` : "0";
+    if (typeof state.focus === "number") {
+      state.fMax = Math.max(state.fMax || 0, state.focus);
+      state.fSum = (state.fSum || 0) + state.focus;
+      state.fN = (state.fN || 0) + 1;
+      if ($("fPeak")) $("fPeak").textContent = `${Math.round(state.fMax * 100)}%`;
+      if ($("fAvg")) $("fAvg").textContent = `${Math.round((state.fSum / state.fN) * 100)}%`;
+    }
+
+    $("goodTag").textContent = state.board === -1 ? "演示" : state.board ? "真设备" : "未连接";
+    $("goodTag").className = "tag " + (state.board === -1 ? "warn" : state.board ? "ok" : "");
+  }
+
+  /* ---------- 计时 ---------- */
+  setInterval(() => {
+    if (!state.startedAt) return;
+    const s = Math.floor((Date.now() - state.startedAt) / 1000);
+    $("liveTime").textContent = `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+    $("todayMin").innerHTML = `${Math.floor(s / 60)}<em>分</em>`;
+    const pct = Math.min(100, Math.round((s / 60) / 30 * 100));
+    if ($("goalPct")) $("goalPct").textContent = `${pct}%`;
+    if ($("goalFill")) $("goalFill").style.width = `${pct}%`;
+  }, 1000);
+
+  /* ---------- WebSocket ---------- */
+  function connect() {
+    let ws;
+    try { ws = new WebSocket(WS_URL); } catch { return; }
+    ws.onopen = () => {
+      state.live = true;               // 只代表“桥接通了”，不代表设备连着
+      $("liveChip").classList.add("on");
+    };
+    ws.onmessage = (ev) => {
+      let m; try { m = JSON.parse(ev.data); } catch { return; }
+      if (m.type === "guidance" || m.type === "plant") return;
+      // 只有真板（board_id >= 0）才解锁页面；board_id = -1 或没有 board_id 一律锁着。
+      if (typeof m.board_id === "number") {
+        lastStateBoard = m.board_id;
+        setLive(demoOn || m.board_id >= 0);
+      }
+      if (typeof m.relax === "number") {
+        state.relax = m.relax;
+        hist.push(m.relax);
+        if (hist.length > 60) hist.shift();
+        drawSpark();
+        state.startedAt = state.startedAt || Date.now();
+        state.rSum = (state.rSum || 0) + m.relax;
+        state.rN = (state.rN || 0) + 1;
+        $("todayAvg").innerHTML = `${Math.round((state.rSum / state.rN) * 100)}<em>%</em>`;
+      }
+      if (typeof m.focus === "number") state.focus = m.focus;
+      if (m.label) state.label = m.label;
+      if (typeof m.n_good === "number") state.nGood = m.n_good;
+      if (typeof m.board_id === "number") {
+        state.board = m.board_id;
+        $("runBoard").textContent = m.board_id === -1 ? "演示样本" : "NeuroBloom 采集板";
+        if ($("worldTag")) $("worldTag").textContent = m.board_id === -1 ? "演示" : "实时";
+      }
+      lastStateAt = Date.now();
+      paintDevPill();
+      setRunning(true);
+      if (typeof m.strategy_name === "string") $("runStrat").textContent = m.strategy_name;
+      if (typeof m.round === "number") $("runRound").textContent = `第 ${m.round} 轮`;
+      if (typeof m.bt === "number") state.bt = m.bt;
+      if (m.world_params) {
+        const p = m.world_params, pc = (v) => (typeof v === "number" ? `${Math.round(v * 100)}%` : "—");
+        $("wSun").textContent = pc(p.sunlight); $("wFog").textContent = pc(p.fog);
+        $("wBloom").textContent = pc(p.bloom); $("wCrystal").textContent = pc(p.crystal);
+      }
+      if (m.bands) updateProof(m);
+      paintTrain(m);
+      paint();
+      const bits = [];
+      if (typeof state.bt === "number") bits.push(`基线 <b>${state.bt.toFixed(2)}</b>`);
+      if (typeof m.strategy_name === "string") bits.push(m.strategy_name);
+      if (state.board === -1) bits.push("演示样本");
+      $("relaxSub").innerHTML = bits.length ? bits.join(" · ") : "信号实时计算中";
+      if (!state.tagSet) {
+        state.tagSet = true;
+        $("runTag").textContent = "进行中"; $("runTag").className = "tag ok";
+        $("todayTag").textContent = "进行中";
+        if ($("trainTag")) { $("trainTag").textContent = "进行中"; $("trainTag").className = "tag ok"; }
+      }
+    };
+    ws.onclose = () => {
+      state.live = false;
+      lastStateAt = 0;
+      paintDevPill();
+      setRunning(false);
+      $("liveChip").classList.remove("on");
+      setTimeout(connect, 2500);
+    };
+    ws.onerror = () => { try { ws.close(); } catch {} };
+  }
+  /* ================= 数据页：波形 + 判据 ================= */
+  const BASE_AB = 1.35;            // 合成板基线 α/β；真机上这个数来自标定
+  const BANDS = [
+    { k: "delta", nm: "δ", f: 2.0,  c: "#94a3b8" },
+    { k: "theta", nm: "θ", f: 6.0,  c: "#a78bfa" },
+    { k: "alpha", nm: "α", f: 10.5, c: "#0d9488" },
+    { k: "beta",  nm: "β", f: 20.0, c: "#f59e0b" },
+    { k: "gamma", nm: "γ", f: 40.0, c: "#ef4444" },
+  ];
+  let bandsNow = null, bandsPrev = null, bandsAt = 0;
+
+  (function buildBandRows() {
+    const box = $("bandList"); if (!box) return;
+    box.innerHTML = BANDS.map((d) =>
+      `<div class="band-row"><span class="nm">${d.nm}</span>` +
+      `<span class="bar"><i id="bw-${d.k}" style="width:0;background:${d.c}"></i></span>` +
+      `<span class="vl" id="bv-${d.k}">—</span></div>`).join("");
+  })();
+
+  /* ---------- 16 通道波形 ----------
+     数据来自桥接 /ws/wave/sub：每秒 25 包，每包 16 通道 × 5 个点（125Hz 显示采样率）。
+     和状态流分开走 —— 状态流 2 秒一包用来算判据，波形流只用来画线，
+     混在一起的话 2 秒才跳一次，看着就是一卡一卡的。 */
+  const TS_FS = 125, TS_SPAN = 5, TS_N = TS_FS * TS_SPAN, TS_CH = 16, TS_PUSH_MS = 40;
+  const TS_COLORS = ["#2b3a97", "#7b3fa0", "#1f6fd0", "#1f9d55", "#d4a017", "#e07a1f",
+                     "#d64545", "#8a5a2b", "#6b7280", "#9333a8", "#274b9f", "#14663f",
+                     "#c9a227", "#ef8b2c", "#c0342b", "#7a4b1f"];
+  const TS_STEPS = [10, 20, 50, 100, 200, 400];
+  const tsCv = $("tsCanvas");
+  const tsCtx = tsCv ? tsCv.getContext("2d") : null;
+  const tsRing = new Float32Array(TS_CH * TS_N);   // 环形缓冲：16 路 × 5 秒
+  const tsScale = new Array(TS_CH).fill(200);      // 每路当前量程（µV）
+  let tsWr = 0;             // 已经写进来的样点数（全局，取模后才是下标）
+  let tsAnchorT = 0;        // 最新一个样点的服务器时间戳（秒）
+  let tsAnchorAt = 0;       // 收到它时的本地时刻（performance.now 毫秒）
+  let tsRecvAt = 0;         // 最后一次收到数据的本地时刻
+  let tsBoard = -1;
+  let simBarOn = null;
+  let liveOn = false;                 // 只有它是 true，页面才允许出现数字
+  let demoOn = false;                 // 用户自己点了「演示」才为 true
+
+  // 数字全部回到占位：结构、卡片、网格、坐标轴一个不动，只把「值」抹掉。
+  const BLANK = {
+    relaxVal: "—", vFocus: "—", fPeak: "—", fAvg: "—",
+    todayMin: "—<em>分</em>", todayAvg: "—", todayStreak: "—<em>天</em>", goalPct: "—%",
+    runStrat: "—", runRound: "—", runBoard: "—",
+    wSun: "—", wFog: "—", wBloom: "—", wCrystal: "—",
+    tRelax: "—", tRound: "—", tStrat: "—", tBoard: "—", tFocus: "—", tAb: "—",
+    fAb: "—", fScore: "—", fRelax: "—", fBase: "—", fIaf: "—", fLabel: "—",
+    lvlBig: "—",
+  };
+  function blankPage() {
+    Object.entries(BLANK).forEach(([id, html]) => {
+      const el = $(id); if (el) el.innerHTML = html;
+    });
+    const ring = $("ring"); if (ring) ring.style.setProperty("--p", 0);
+    ["fFocus", "tFill", "goalFill"].forEach((id) => {
+      const el = $(id); if (el) el.style.width = "0";
+    });
+    ["sLine", "sArea"].forEach((id) => { const el = $(id); if (el) el.setAttribute("d", ""); });
+    const dot = $("sDot"); if (dot) { dot.setAttribute("cx", -10); dot.setAttribute("cy", -10); }
+    const pin = $("rulerPin"); if (pin) pin.style.left = "50%";
+    BANDS.forEach((d) => {
+      const b = $("bw-" + d.k); if (b) b.style.width = "0";
+      const v = $("bv-" + d.k); if (v) v.textContent = "—";
+    });
+    for (let i = 0; i < TS_CH; i++) {
+      const r = $("tsRail-" + i), m = $("tsRms-" + i);
+      if (r) { r.textContent = "—"; r.className = "rl"; }
+      if (m) m.textContent = "—";
+    }
+    const sc = $("tsScale"); if (sc) sc.textContent = "自动";
+    const meta = $("tsMeta"); if (meta) meta.textContent = "采样率待定 · 5 秒窗";
+    const src = $("tsSrc"); if (src) src.textContent = "未连接采集板";
+    const bt = $("bandTag"); if (bt) bt.textContent = "µV²";
+    const pt = $("proofTag"); if (pt) pt.textContent = "未连接";
+    const ok = $("okTag"); if (ok) ok.textContent = "等待数据";
+    const gt = $("goodTag"); if (gt) gt.textContent = "未连接";
+    const st = $("stateWord"); if (st) { st.textContent = "等待数据"; st.className = "state-word bad"; }
+    const sub = $("relaxSub"); if (sub) sub.textContent = "还没有收到脑电状态";
+    const si = $("stage"); if (si) si.removeAttribute("src");
+    const se = $("stageEmpty"); if (se) se.classList.remove("hide");
+  }
+  function applyDemo() {
+    tsSimOn = demoOn;
+    paintBanner();
+    setLive(demoOn || lastStateBoard >= 0);
+  }
+  function setLive(on) {
+    on = !!on;
+    if (on === liveOn) return;
+    liveOn = on;
+    document.body.classList.toggle("blind", !on);
+    if (on) {
+      simBarSet(demoOn);
+      _tsFitW = 0; fitTSIfNeeded(); drawTS();
+    } else {
+      blankPage();
+      tsClearRing();
+      tsSetEmpty(true);
+      simBarSet(true);
+    }
+  }
+
+  function paintBanner() {
+    const bar = $("simBar");
+    if (!bar) return;
+    const txt = bar.querySelector("span");
+    const btn = $("demoBtn");
+    bar.classList.toggle("demo", demoOn);
+    if (txt) txt.innerHTML = demoOn
+      ? "<b>演示模式。</b>下面的数字和曲线来自本机演示样本的回放，不是你的脑电——点「关闭演示」立刻恢复空白。"
+      : "<b>现在没有连接采集板。</b>连上之前，这里只留空位，不显示任何数字、曲线或画面——不猜、不补、也不用合成数据代填。";
+    if (btn) btn.textContent = demoOn ? "关闭演示" : "演示（非脑电）";
+    simBarSet(true);
+  }
+  let lastStateBoard = -1;
+  function simBarSet(sim) {
+    const bar = $("simBar");
+    if (!bar) return;
+    if (simBarOn === sim) return;
+    simBarOn = sim;
+    bar.hidden = !sim;
+  }
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-go]");
+    if (!b) return;
+    const nav = document.querySelector('.nav-item[data-page="' + b.dataset.go + '"]');
+    if (nav) nav.click();
+  });
+  const simGo = $("simBarGo");
+  if (simGo) simGo.addEventListener("click", () => {
+    const b = document.querySelector('.nav-item[data-page="device"]');
+    if (b) b.click();
+  });
+  const demoBtn = $("demoBtn");
+  if (demoBtn) demoBtn.addEventListener("click", async () => {
+    const want = !demoOn;
+    demoBtn.disabled = true;
+    demoBtn.textContent = want ? "启动演示…" : "关闭演示…";
+    try {
+      const r = await fetch("http://127.0.0.1:8765/control/demo?on=" + (want ? 1 : 0));
+      const d = await r.json();
+      if (!d.ok) {
+        notice(d.error || "演示启动失败");
+      } else {
+        demoOn = want;
+        applyDemo();
+      }
+    } catch {
+      notice("连不上本地桥接（8765 端口），演示起不来");
+    }
+    demoBtn.disabled = false;
+    paintBanner();
+  });
+
+  let tsSimOn = false;      // 合成预览：必须用户自己点，默认关
+  let tsEmptyOn = false;
+
+  (function buildTsRows() {
+    const bg = $("tsBadges"), st = $("tsStats");
+    if (!bg || !st) return;
+    let hb = "", hs = "";
+    for (let i = 0; i < TS_CH; i++) {
+      hb += `<div><span class="bdg" style="background:${TS_COLORS[i]}">${i + 1}</span></div>`;
+      hs += `<div><span class="rl" id="tsRail-${i}">—</span>` +
+            `<em id="tsRms-${i}">—</em></div>`;
+    }
+    bg.innerHTML = hb; st.innerHTML = hs;
+  })();
+
+  /* 没有电极电压进来时，波形区不给任何"正在采集"的错觉。
+     只有两种情况允许画线：① 真板（board>=0）② 用户明确点了合成预览（画面上带 SIMULATED 水印）。 */
+  function tsSetEmpty(on, title, body, why) {
+    const wrap = $("tsEmpty");
+    if (!wrap) return;
+    if (on === tsEmptyOn && !title) return;
+    tsEmptyOn = on;
+    wrap.style.display = on ? "" : "none";
+    if (on) {
+      $("tsEmptyT").textContent = title || "未连接采集板，这里没有波形";
+      $("tsEmptyP").textContent = body || "上面没有线，是因为没有电极电压进来——不是信号太小，是没有信号。";
+      $("tsEmptyW").textContent = why || "把板子开机、电脑连上 WiFi「ExpandableEEGAP」，再到「设备」页点「连接并开始采集」。";
+      for (let i = 0; i < TS_CH; i++) {
+        const r = $("tsRail-" + i), m = $("tsRms-" + i);
+        if (r) { r.textContent = "—"; r.className = "rl"; }
+        if (m) m.textContent = "—";
+      }
+      tsCtx && tsCtx.clearRect(0, 0, tsCv.width, tsCv.height);
+    }
+  }
+
+  function tsClearRing() {
+    tsWr = 0;
+    tsCtx && tsCtx.clearRect(0, 0, tsCv.width, tsCv.height);
+  }
+
+  function fitTS() {
+    if (!tsCtx) return;
+    const r = tsCv.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    const dpr = window.devicePixelRatio || 1;
+    tsCv.width = Math.round(r.width * dpr);
+    tsCv.height = Math.round(r.height * dpr);
+    tsCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener("resize", fitTS);
+
+  function tsPush(msg) {
+    const ch = msg.ch;
+    if (!Array.isArray(ch) || ch.length < TS_CH) return;
+    const sim = (msg.sim === true) || msg.board === -1;
+    if (sim && !tsSimOn) {                 // 合成数据不许冒充采集中
+      if (!tsEmptyOn) tsSetEmpty(true);
+      const src0 = $("tsSrc");
+      if (src0) src0.textContent = "未连接采集板";
+      return;
+    }
+    if (tsEmptyOn) tsSetEmpty(false);
+    const n = ch[0].length;
+    for (let j = 0; j < n; j++) {
+      for (let c = 0; c < TS_CH; c++) {
+        tsRing[c * TS_N + (tsWr % TS_N)] = ch[c][j] || 0;
+      }
+      tsWr++;
+    }
+    // 时间锚点：用「最新样点的服务器时间 + 收到它的本地时刻」对齐，
+    // 之后靠本地时钟往前推，避免两台机器的系统时间差把波形挤到边上去。
+    tsAnchorT = msg.t || (Date.now() / 1000);
+    tsAnchorAt = performance.now();
+    tsRecvAt = tsAnchorAt;
+    tsBoard = msg.board;
+    const src = $("tsSrc");
+    if (src) src.textContent = sim ? "演示数据 · 非电极电压" : "实时采集 · 16 通道";
+    const meta = $("tsMeta");
+    if (meta) meta.textContent = `${msg.fs || 125} Hz · 5 秒窗 · 每 40 ms 一帧`;
+  }
+
+  function tsSampleAt(i, c) {          // i：最新的第几个（0 = 最新）
+    return tsRing[c * TS_N + ((tsWr - 1 - i) % TS_N + TS_N) % TS_N];
+  }
+
+  function drawTS() {
+    if (!tsCtx) return;
+    const W = tsCv.clientWidth, H = tsCv.clientHeight;
+    if (!W || !H) return;
+    const ctx = tsCtx;
+    ctx.clearRect(0, 0, W, H);
+    const lane = H / TS_CH;
+    const pxPerSec = W / TS_SPAN;
+    const nowPerf = performance.now();
+    const tNow = tsAnchorT + (nowPerf - tsAnchorAt) / 1000;
+    const avail = Math.min(tsWr, TS_N);
+
+    // 每路的量程：取这 5 秒内的最大绝对值，向上取到固定的几档
+    // （OpenBCI 的 Vert Scale 是一档一档的，自动也照这个来，别弄出 ±37µV 这种数）
+    // 量程只有一条：跟 OpenBCI 的 Vert Scale 一样，16 条共用一把尺子，
+    // 这样「哪一路更响」才看得出来；每路各auto各的，看上去永远一样高，反而失真。
+    let mxAll = 0;
+    for (let c = 0; c < TS_CH; c++) {
+      for (let i = 0; i < avail; i++) {
+        const v = Math.abs(tsSampleAt(i, c));
+        if (v > mxAll) mxAll = v;
+      }
+    }
+    let sc = TS_STEPS[TS_STEPS.length - 1];
+    for (const stp of TS_STEPS) { if (mxAll <= stp * 0.92) { sc = stp; break; } }
+    if (avail && sc !== tsScale[0]) {
+      tsScale.fill(sc);
+      const el = $("tsScale");
+      if (el) el.textContent = "自动 · ±" + sc + " µV";
+    }
+
+    for (let c = 0; c < TS_CH; c++) {
+      const y0 = c * lane, mid = y0 + lane / 2;
+      // 轨道分隔线 + 零线
+      ctx.strokeStyle = "#f1f3f7"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, Math.round(y0) + 0.5);
+      ctx.lineTo(W, Math.round(y0) + 0.5); ctx.stroke();
+      ctx.strokeStyle = "#e6eaf0";
+      ctx.beginPath(); ctx.moveTo(0, Math.round(mid) + 0.5);
+      ctx.lineTo(W, Math.round(mid) + 0.5); ctx.stroke();
+
+      if (!avail) continue;
+      const gain = (lane / 2 - 1.5) / tsScale[c];
+      ctx.beginPath();
+      ctx.strokeStyle = TS_COLORS[c];
+      ctx.lineWidth = 1.35;
+      ctx.lineJoin = "round";
+      let first = true, lx = 0, ly = 0;
+      for (let i = avail - 1; i >= 0; i--) {          // 从最旧画到最新
+        const x = W - (tNow - (tsAnchorT - i / TS_FS)) * pxPerSec;
+        if (x < -2) continue;
+        const y = mid - tsSampleAt(i, c) * gain;
+        if (first) { ctx.moveTo(x, y); first = false; }
+        else ctx.lineTo(x, y);
+        lx = x; ly = y;
+      }
+      // 最新样点到「现在」之间还差不到 40ms：把最后一段按斜率延长过去，
+      // 不然右边会露出一个 ~9px 的缺口，16 条一起缺就很明显地在闪。
+      if (!first && lx < W - 0.5) {
+        const dy = tsSampleAt(0, c) - tsSampleAt(1, c);
+        const yEnd = ly - dy * gain * Math.min(1, (W - lx) / pxPerSec * TS_FS);
+        ctx.lineTo(W, yEnd);
+      }
+      ctx.stroke();
+    }
+
+    // 合成预览时必须在画面上留痕：截图、录屏、给家属看的时候都能一眼认出不是电极电压。
+    if (tsSimOn && tsBoard < 0) {
+      ctx.save();
+      ctx.globalAlpha = 0.16;
+      ctx.fillStyle = "#b0782a";
+      ctx.font = "600 15px -apple-system, 'Helvetica Neue', sans-serif";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      const step = 210;
+      for (let y = lane * 1.2; y < H; y += step) {
+        for (let x = 90; x < W + step; x += step * 2.1) {
+          ctx.save(); ctx.translate(x, y); ctx.rotate(-0.22);
+          ctx.fillText("SIMULATED · 合成", 0, 0);
+          ctx.restore();
+        }
+      }
+      ctx.restore();
+    }
+  }
+
+  function tsStats() {
+    if (tsEmptyOn) return;
+    const avail = Math.min(tsWr, TS_N);
+    for (let c = 0; c < TS_CH; c++) {
+      let sum = 0, sq = 0, rail = 0;
+      for (let i = 0; i < avail; i++) {
+        const v = tsSampleAt(i, c);
+        sum += v; sq += v * v;
+        if (Math.abs(v) >= 199) rail++;
+      }
+      const n = avail || 1;
+      const rms = Math.sqrt(sq / n);
+      const pct = avail ? (rail / avail) * 100 : 0;
+      const rl = $("tsRail-" + c), rm = $("tsRms-" + c);
+      if (!rl) continue;
+      const bad = pct >= 50;
+      rl.textContent = (bad ? "Railed " : "Not Railed ") + pct.toFixed(2) + "%";
+      rl.className = "rl" + (bad ? " bad" : "");
+      // 直流偏置早就被扣掉了，所以 mean 基本在 0 附近；这里只报有效值
+      rm.textContent = avail ? rms.toFixed(1) + " µVrms" : "—";
+    }
+  }
+
+  let _tsTick = 0;
+  function tsLoop() {
+    _tsTick = performance.now();
+    const on = $("p-data").classList.contains("on");
+    if (on) { fitTSIfNeeded(); drawTS(); }
+    requestAnimationFrame(tsLoop);
+  }
+  let _tsFitW = 0, _tsFitH = 0;
+  function fitTSIfNeeded() {
+    const r = tsCv.getBoundingClientRect();
+    if (Math.abs(r.width - _tsFitW) > 1 || Math.abs(r.height - _tsFitH) > 1) {
+      _tsFitW = r.width; _tsFitH = r.height; fitTS();
+    }
+  }
+  // 兜底：窗口被挡住时 rAF 会被系统停掉（实测），每 300ms 补画一次
+  setInterval(() => {
+    if (performance.now() - _tsTick > 500 && $("p-data").classList.contains("on")) {
+      fitTSIfNeeded(); drawTS();
+    }
+    tsStats();
+    // 数据断了超过 2.5 秒就把缓冲清掉，别让旧波形挂在那儿冒充「现在」
+    if (tsWr && performance.now() - tsRecvAt > 2500) {
+      tsClearRing();
+      const src = $("tsSrc"); if (src) src.textContent = "等待数据";
+      tsSetEmpty(true, "信号断了", "已经 2.5 秒没有收到样点，旧波形不再挂在屏幕上冒充「现在」。",
+                 "板子可能没电、WiFi 掉了，或者采集进程被停掉了。");
+    }
+  }, 300);
+
+  let waveWS = null, waveRetry = null;
+  function connectWave() {
+    if (waveWS && (waveWS.readyState === 0 || waveWS.readyState === 1)) return;
+    const url = (location.protocol === "https:" ? "wss://" : "ws://") +
+                (location.hostname || "127.0.0.1") + ":8765/ws/wave/sub";
+    try { waveWS = new WebSocket(url); } catch (e) { return; }
+    waveWS.onmessage = (ev) => {
+      try { const m = JSON.parse(ev.data); if (m.type === "wave") tsPush(m); }
+      catch (e) { /* 坏包丢掉，不许把整个页面带崩 */ }
+    };
+    waveWS.onclose = () => {
+      waveWS = null;
+      clearTimeout(waveRetry);
+      waveRetry = setTimeout(connectWave, 1500);
+    };
+  }
+
+  function updateProof(m) {
+    const b = m.bands; if (!b) return;
+    bandsPrev = bandsNow; bandsNow = b; bandsAt = performance.now();
+
+    const mx = Math.max(60, b.alpha || 0, b.beta || 0, b.theta || 0);
+    for (const d of BANDS) {
+      const p = b[d.k] || 0;
+      const bar = $("bw-" + d.k), vl = $("bv-" + d.k);
+      if (bar) bar.style.width = Math.max(2, Math.min(100, (p / mx) * 100)) + "%";
+      if (vl) vl.textContent = p.toFixed(1);
+    }
+    if (m.markers && typeof m.markers.iaf === "number" && $("fIaf"))
+      $("fIaf").textContent = m.markers.iaf.toFixed(1);
+    if (m.board_id === -1) $("proofTag").textContent = "演示";
+    else if (typeof m.board_id === "number") $("proofTag").textContent = "真设备";
+    if ($("bandTag")) $("bandTag").textContent = m.board_id === -1 ? "µV² · 演示" : "µV²";
+    simBarSet(m.board_id === -1);
+
+    const ab = b.alpha / b.beta;
+    const score = ab / BASE_AB;
+    const relax = Math.min(1, Math.max(0, 0.5 + 0.5 * Math.log2(score)));
+    $("fAb").textContent = `${b.alpha.toFixed(1)} ÷ ${b.beta.toFixed(1)} = ${ab.toFixed(2)}`;
+    $("fScore").textContent = score.toFixed(2);
+    $("fRelax").textContent = (relax * 100).toFixed(1) + "%";
+    $("fLabel").textContent = relax >= 0.65 ? "放松 relaxed" : relax <= 0.35 ? "紧绷 tense" : "平稳 neutral";
+    $("rulerPin").style.left = (relax * 100) + "%";
+
+    const diff = Math.abs(relax - m.relax);
+    const okEl = $("okTag");
+    okEl.textContent = diff < 0.01 ? `与环上一致 ✓ ${Math.round(m.relax * 100)}%` : "与环上有偏差";
+    okEl.className = "tag " + (diff < 0.01 ? "ok" : "warn");
+  }
+
+  if ($("toProof")) {
+    $("toProof").addEventListener("click", () => {
+      document.querySelector('.nav-item[data-page="data"]').click();
+    });
+  }
+  const deep = (location.hash || "").replace("#", "");
+  if (names[deep]) document.querySelector(`.nav-item[data-page="${deep}"]`).click();
+  setTimeout(() => {
+    fitTS(); fitStage(); requestAnimationFrame(tsLoop);
+    connectVideo(); connectWave();
+    // 默认空态：没有真板就没有波形，整页也不显示任何数字
+    tsSetEmpty(true);
+    setLive(false);
+    paintBanner();
+  }, 60);
+
+  /* ================= 训练页：画面 + 状态 ================= */
+  const VID_URL = "ws://127.0.0.1:8765/ws/video/sub";
+  const stageImg = $("stage");
+  const stageEmpty = $("stageEmpty");
+
+  /* 用 <img> 播 JPEG 帧：清晰度只由源分辨率决定，解码在合成线程，
+     不再每帧读回像素画到 2 倍 dpr 的 canvas（那是之前糊和卡的主因）。 */
+  function fitStage() { /* img 自适应，无需手动改分辨率 */ }
+  window.addEventListener("resize", fitStage);
+
+  function connectVideo() {
+    let ws, prevUrl = null;
+    try { ws = new WebSocket(VID_URL); } catch (e) { return; }
+    ws.binaryType = "blob";
+    ws.onmessage = (ev) => {
+      const blob = ev.data instanceof Blob ? ev.data : new Blob([ev.data]);
+      const url = URL.createObjectURL(blob), old = prevUrl;
+      prevUrl = url;
+      stageImg.onload = () => {
+        if (old) URL.revokeObjectURL(old);
+        if (stageEmpty) stageEmpty.classList.add("hide");
+      };
+      stageImg.src = url;
+    };
+    ws.onclose = () => setTimeout(connectVideo, 3000);
+    ws.onerror = () => { try { ws.close(); } catch (e) {} };
+  }
+
+  function paintTrain(m) {
+    if (!$("tRelax")) return;
+    const r = state.relax;
+    if (typeof r === "number") {
+      $("tRelax").innerHTML = Math.round(r * 100) + "<small>%</small>";
+      $("tFill").style.width = (r * 100) + "%";
+      $("tGuide").textContent = r >= 0.65
+        ? "很好，保持这个呼吸节奏，画面会继续长出来"
+        : r <= 0.35
+          ? "肩膀松下来，跟着节奏慢慢吸气，不用用力"
+          : "继续就好，别刻意使劲，画面跟着你走";
+    }
+    const w = dict[state.label] || ["等待数据", "bad"];
+    $("tStateTag").textContent = w[0];
+    $("tStateTag").className = "tag " + (w[1] === "bad" ? "warn" : "ok");
+    if (typeof m.focus === "number") $("tFocus").textContent = Math.round(m.focus * 100) + "%";
+    if (typeof m.strategy_name === "string") $("tStrat").textContent = m.strategy_name;
+    if (m.bands && m.bands.beta) $("tAb").textContent = (m.bands.alpha / m.bands.beta).toFixed(2);
+    if (typeof m.round === "number") $("tRound").textContent = `第 ${m.round} 轮`;
+    if (m.board_id === -1) $("tBoard").textContent = "演示样本";
+    else if (typeof m.board_id === "number") $("tBoard").textContent = "采集板";
+  }
+
+  const trainBtn = $("trainBtn");
+  if (trainBtn) {
+    trainBtn.addEventListener("click", () => {
+      trainBtn.disabled = true;
+      trainBtn.textContent = "启动中…";
+      fetch("http://127.0.0.1:8765/control/start")
+        .then((r) => r.json())
+        .then((d) => { if (d && d.ok === false) notice(d.reason || "启动失败：没有可用的采集板。"); })
+        .catch(() => {})
+        .finally(() => setTimeout(() => {
+        trainBtn.disabled = false;
+        trainBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5-13-7.5z" fill="currentColor" stroke="none"/></svg>开始训练';
+      }, 1600));
+    });
+  }
+
+  /* ================= 设备：真实状态 + 直连 ================= */
+  const API = "http://127.0.0.1:8765";
+  const BOARD_LABEL = { 6: "16 通道 · Cyton+Daisy / WiFi", 5: "8 通道 · Cyton / WiFi", 0: "蓝牙或 USB 串口" };
+  let lastStateAt = 0, devSnap = null, boardFilled = false, cfgFilled = false;
+
+  function setRunning(on) {
+    ["ovStop", "trainStop"].forEach((id) => { const b = $(id); if (b) b.hidden = !on; });
+  }
+
+  /* 左栏胶囊：只认“最近 4 秒有没有脑电消息 + board_id”，不再拿桥接连通冒充设备 */
+  function paintDevPill() {
+    const btn = $("devBtn"), tx = $("devText");
+    if (!btn || !tx) return;
+    const fresh = lastStateAt && Date.now() - lastStateAt < 4000;
+    if (!fresh) {
+      btn.classList.remove("on"); tx.textContent = "未连接"; btn.title = "没有收到脑电数据";
+      return;
+    }
+    const b = state.board;
+    btn.classList.add("on");
+    if (b === -1) { tx.textContent = "未连接采集板"; btn.title = "没有电极电压进来"; }
+    else if (typeof b === "number") { tx.textContent = "已连接 · " + (b === 6 ? 16 : b === 5 ? 8 : "") + "通道"; btn.title = "真实采集板"; }
+    else { tx.textContent = "已连接"; btn.title = "收到数据"; }
+  }
+  setInterval(paintDevPill, 1000);
+  // 数据断了（4 秒没新包）就立刻回到盲态：宁可整页空白，也不让旧数字留在屏幕上。
+  setInterval(() => {
+    if (liveOn && !(lastStateAt && Date.now() - lastStateAt < 4000)) setLive(false);
+  }, 1000);
+
+  async function loadDevice(force) {
+    try {
+      const r = await fetch(API + "/device" + (force ? "?refresh=1" : "?t=" + Date.now()), { cache: "no-store" });
+      paintDevice(await r.json());
+    } catch (e) {
+      if ($("devHint")) $("devHint").textContent = "连不上桥接服务（127.0.0.1:8765），先启动 NeuroBloom。";
+    }
+  }
+
+  function paintDevice(x) {
+    if (!x || !x.ok || !$("devStat")) return;
+    devSnap = x;
+    const mode = x.mode || "idle";
+    const view = {
+      real: ["真实脑电 · 采集中", "ok", "已连接"],
+      demo: ["演示样本 · 非脑电", "warn", "演示"],
+      starting: ["正在连接板子…", "warn", "连接中"],
+      idle: ["未连接", "off", "未连接"],
+    }[mode] || ["未连接", "off", "未连接"];
+
+    $("devStat").textContent = view[0];
+    $("devStat").className = "dev-stat " + view[1];
+    $("devTag").textContent = view[2];
+    $("devTag").className = "tag " + (mode === "real" ? "ok" : mode === "idle" ? "" : "warn");
+    $("devModeTag").textContent = { real: "真机", demo: "演示", starting: "启动中", idle: "离线" }[mode] || mode;
+    // 刷新页面后如果演示还开着，按钮和横幅要跟着恢复，别让人以为一切归零
+    if (mode === "demo" && !demoOn) { demoOn = true; applyDemo(); }
+
+    $("devKvBoard").textContent = (x.config && x.config.board_id != null)
+      ? (BOARD_LABEL[x.config.board_id] || x.board_name || String(x.config.board_id)) : (x.board_name || "—");
+    const p = x.probe || {};
+    $("devKvProbe").textContent = p.reachable
+      ? `${(x.config && x.config.ip) || "板子"} · ${p.ms} ms`
+      : "探不到（板子没开 / WiFi 没连）";
+    $("devKvErr").textContent = x.last_error || "无";
+    $("devHint").textContent = x.hint || "";
+
+    if (!boardFilled) {
+      const bs = x.boards || BOARD_LABEL;
+      $("devBoard").innerHTML = Object.keys(bs).map((k) =>
+        `<option value="${k}">${bs[k]}</option>`).join("");
+      boardFilled = true;
+    }
+    if (!cfgFilled && x.config) {
+      $("devBoard").value = String(x.config.board_id);
+      $("devIp").value = x.config.ip;
+      $("devPort").value = String(x.config.port);
+      cfgFilled = true;
+    }
+  }
+
+  async function runControl(kind) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 20000);
+    try {
+      const r = await fetch(API + "/control/" + kind, { signal: ctl.signal });
+      return await r.json().catch(() => ({}));
+    } finally { clearTimeout(timer); }
+  }
+
+  async function doStop(btn) {
+    if (!btn) return;
+    const label = btn.textContent;
+    btn.disabled = true; btn.textContent = "停止中…";
+    try { await runControl("stop"); } catch (e) {}
+    btn.disabled = false; btn.textContent = label;
+    lastStateAt = 0; state.tagSet = false;
+    paintDevPill(); setRunning(false);
+    ["runTag", "todayTag", "trainTag"].forEach((id) => {
+      if ($(id)) { $(id).textContent = "未开始"; $(id).className = "tag"; }
+    });
+    if ($("stageEmpty")) $("stageEmpty").classList.remove("hide");
+    loadDevice(true);
+  }
+  ["ovStop", "trainStop"].forEach((id) => {
+    const b = $(id);
+    if (b) b.addEventListener("click", () => doStop(b));
+  });
+
+  if ($("devRefresh")) $("devRefresh").addEventListener("click", async () => {
+    const b = $("devRefresh"); b.disabled = true; b.textContent = "检测中…";
+    await loadDevice(true);
+    b.disabled = false; b.textContent = "重新检测";
+  });
+
+  if ($("devConnect")) $("devConnect").addEventListener("click", async () => {
+    const b = $("devConnect"), label = b.textContent;
+    b.disabled = true; b.textContent = "连接中…（最多 5 秒）";
+    try {
+      const q = new URLSearchParams({
+        ip: ($("devIp").value || "").trim() || "192.168.4.1",
+        port: ($("devPort").value || "").trim() || "6677",
+        board_id: $("devBoard").value || "6",
+      });
+      const r = await fetch(API + "/device/connect?" + q.toString(), { cache: "no-store" });
+      const j = await r.json();
+      if (j.device) paintDevice(j.device);
+      $("devHint").textContent = j.ok
+        ? "已连上，脑电数据开始进来；回「实时训练」就能看到画面。"
+        : (j.error || "连接失败，原因未返回");
+      if (!j.ok) $("devKvErr").textContent = j.error || "连接失败";
+    } catch (e) {
+      $("devHint").textContent = "请求超时或被拒。确认板子已开机、电脑已连它的 WiFi。";
+    } finally { b.disabled = false; b.textContent = label; }
+  });
+
+  if ($("devStop")) $("devStop").addEventListener("click", () => doStop($("devStop")));
+  loadDevice(false);
+  setInterval(() => { if (!$("p-device").classList.contains("on")) loadDevice(false); }, 8000);
+
+  /* ================= 随访页：量表 ================= */
+  const SC_API = "http://127.0.0.1:8765/scales";
+  const SC_SUB = "http://127.0.0.1:8765/scales/submit";
+  const ANS = { phq2: [], phq9: [], gad7: [] };
+  const LVL = { green: ["低风险", "green"], yellow: ["中风险", "yellow"], red: ["高风险", "red"] };
+  let HIST = [];
+  try { HIST = JSON.parse(localStorage.getItem("nb_follow") || "[]"); } catch (e) { HIST = []; }
+
+  function renderQ(box, key, items, opts) {
+    if (!box) return;
+    box.innerHTML = items.map((q, i) =>
+      `<div class="qrow"><div class="qt"><b>${i + 1}</b>${q}</div><div class="opts">` +
+      opts.map(o => `<button class="opt" data-k="${key}" data-i="${i}" data-v="${o.value}">${o.label}</button>`).join("") +
+      `</div></div>`).join("");
+    box.addEventListener("click", (e) => {
+      const b = e.target.closest(".opt"); if (!b) return;
+      ANS[key][+b.dataset.i] = +b.dataset.v;
+      box.querySelectorAll(".opt").forEach(x => x.classList.toggle("on", x === b));
+    });
+  }
+
+  async function loadScales() {
+    try {
+      const r = await fetch(`${SC_API}?t=${Date.now()}`, { cache: "no-store" });
+      const d = await r.json();
+      const q = d.questionnaire || d;
+      renderQ($("qPhq2"), "phq2", q.phq2.items, q.options);
+      renderQ($("qPhq9"), "phq9", q.phq9.items, q.options);
+      renderQ($("qGad7"), "gad7", q.gad7.items, q.options);
+      ANS.phq2 = q.phq2.items.map(() => null);
+      ANS.phq9 = q.phq9.items.map(() => null);
+      ANS.gad7 = q.gad7.items.map(() => null);
+      $("scaleTag").textContent = "量表已加载";
+      $("scaleTag").className = "tag ok";
+    } catch (e) {
+      $("scaleTag").textContent = "量表接口未连上";
+      $("scaleTag").className = "tag warn";
+      if ($("qPhq2")) $("qPhq2").innerHTML = '<p class="note">桥接 8765 没连上，量表题目取不到。</p>';
+    }
+  }
+
+  function paintHist() {
+    if (!$("histList")) return;
+    $("histTag").textContent = `${HIST.length} 次`;
+    $("histList").innerHTML = HIST.length ? HIST.map((h) => {
+      const d = new Date(h.t);
+      const ds = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      return `<div class="it"><span>${ds}</span><span><b>${h.name}</b> · PHQ-9 ${h.phq9 ?? "—"} · GAD-7 ${h.gad7 ?? "—"}</span></div>`;
+    }).join("") : '<div class="empty">还没有随访记录。</div>';
+  }
+
+  function paintResult(j) {
+    const t = j.triage || {}, rec = j.record || {}, sc = rec.scores || {};
+    const lv = t.level || "unknown";
+    const hit = LVL[lv] || ["已评估", ""];
+    $("lvlBig").textContent = hit[0];
+    $("lvlBig").className = "lvl " + hit[1];
+    $("lvlTag").textContent = `PHQ-9 ${sc.phq9 ?? "—"} · GAD-7 ${sc.gad7 ?? "—"}`;
+    $("resNote").textContent = t.action || "";
+    $("resReasons").innerHTML = (t.reasons || []).map(r => `<li>${r}</li>`).join("");
+    $("formMsg").textContent = j.saved ? `已记录（${rec.pid || "anon"}）` : "已计算，未写入文件";
+    $("formMsg").className = "msg ok";
+    HIST.unshift({ t: Date.now(), lv, name: hit[0], phq9: sc.phq9, gad7: sc.gad7 });
+    HIST = HIST.slice(0, 20);
+    try { localStorage.setItem("nb_follow", JSON.stringify(HIST)); } catch (e) {}
+    paintHist();
+  }
+
+  async function submitScales() {
+    if (ANS.phq2.some(v => v === null)) {
+      $("formMsg").textContent = "先答完 PHQ-2 两题";
+      $("formMsg").className = "msg";
+      return;
+    }
+    const p = new URLSearchParams({ pid: ($("pidInput").value || "anon").trim() });
+    p.set("phq2", ANS.phq2.join(","));
+    if (ANS.phq9.every(v => v !== null)) p.set("phq9", ANS.phq9.join(","));
+    if (ANS.gad7.every(v => v !== null)) p.set("gad7", ANS.gad7.join(","));
+    $("subBtn").disabled = true;
+    $("formMsg").textContent = "计算中…";
+    try {
+      const r = await fetch(`${SC_SUB}?${p}`, { cache: "no-store" });
+      paintResult(await r.json());
+    } catch (e) {
+      $("formMsg").textContent = "提交失败，检查桥接";
+    } finally {
+      $("subBtn").disabled = false;
+    }
+  }
+
+  if ($("subBtn")) $("subBtn").addEventListener("click", submitScales);
+  if ($("foldBtn")) $("foldBtn").addEventListener("click", () => {
+    const box = $("moreScales");
+    box.hidden = !box.hidden;
+    $("foldBtn").textContent = box.hidden ? "展开完整量表 PHQ-9 / GAD-7 →" : "收起完整量表 ←";
+  });
+  if ($("histList")) { paintHist(); loadScales(); }
+
+  connect();
+
+  /* 不再伪造一份“进行中”的示例：没有数据就老实显示空态，
+     设备标签只由真实 board_id 和最近一条消息决定。 */
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,251 @@
+// CameraStreamer.cs —— 把 Unity 的画面实时推给控制台网页。
+//
+// 做法：每隔一小会儿，把相机单独渲染到一张 RenderTexture 上，读回像素、
+// 压成 JPEG，用 WebSocket 二进制帧发给 bridge。bridge 原样转发给浏览器。
+//
+// 为什么不截屏：截屏要系统录屏权限，还会把别的窗口拍进去。这样渲染只有
+// 这一个相机的画面，干净、可控、也不会打扰正在用电脑的人。
+//
+// 不用手动挂：进入 Play 时会自动给主相机加一个（见文件末尾的 Bootstrap）。
+using System;
+using System.Net.WebSockets;
+using System.Threading;
+using System.Threading.Tasks;
+using UnityEngine;
+
+public class CameraStreamer : MonoBehaviour
+{
+    [Tooltip("推流地址。Unity 和 bridge 在同一台电脑就用 127.0.0.1")]
+    public string url = "ws://127.0.0.1:8765/ws/video/pub";
+
+    [Tooltip("要推哪台相机。留空 = 自动找主相机")]
+    public Camera source;
+
+    [Header("画质与流量")]
+    [Tooltip("推出去的分辨率。控制台上是个小窗，800x450 足够清楚")]
+    public int width = 800;
+    public int height = 450;
+
+    [Tooltip("每秒推几张。8 张看起来就是连贯的画面了，流量也不大")]
+    public int fps = 8;
+
+    [Range(30, 95)]
+    [Tooltip("JPEG 质量。70 大约每帧 30~60 KB")]
+    public int quality = 70;
+
+    [Header("连接")]
+    public float retrySeconds = 2f;
+    public float connectTimeout = 5f;
+
+    [Header("状态")]
+    [SerializeField] private bool connected;
+    [SerializeField] private int framesSent;
+    [SerializeField] private float lastFps;
+
+    private RenderTexture _rt;
+    private Texture2D _tex;
+    private ClientWebSocket _ws;
+    private CancellationTokenSource _cts;
+    private int _connecting;
+    private float _nextTry;
+    private float _stuckAt;
+    private int _sending;          // 0/1：同一时刻只允许一帧在路上
+    private float _nextFrame;
+    private float _statAt;
+    private int _framesInWindow;
+    private int _warnedStuck;
+
+    public bool IsStreaming => connected;
+
+    void Awake()
+    {
+        _cts = new CancellationTokenSource();
+        _rt = new RenderTexture(width, height, 24, RenderTextureFormat.ARGB32) { name = "NeuroBloomStream" };
+        _rt.Create();
+        _tex = new Texture2D(width, height, TextureFormat.RGB24, false);
+        if (source == null) source = Camera.main;
+    }
+
+    void OnEnable()
+    {
+        if (_cts == null || _cts.IsCancellationRequested) _cts = new CancellationTokenSource();
+        _nextTry = 0f;
+    }
+
+    void Update()
+    {
+        KickConnect();
+
+        if (!connected || source == null) return;
+        if (Time.unscaledTime < _nextFrame) return;
+        _nextFrame = Time.unscaledTime + 1f / Mathf.Max(1, fps);
+
+        if (Interlocked.CompareExchange(ref _sending, 1, 0) != 0) return;   // 上一帧还没发完，这帧直接丢
+        byte[] jpg;
+        try { jpg = Capture(); }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[CameraStreamer] 抓帧失败：{e.Message}");
+            Interlocked.Exchange(ref _sending, 0);
+            return;
+        }
+        if (jpg == null) { Interlocked.Exchange(ref _sending, 0); return; }
+        _ = SendAsync(jpg);
+
+        _framesInWindow++;
+        if (Time.unscaledTime - _statAt > 10f)
+        {
+            lastFps = _framesInWindow / (Time.unscaledTime - _statAt);
+            _statAt = Time.unscaledTime;
+            _framesInWindow = 0;
+            Debug.Log($"[CameraStreamer] 推流中 {lastFps:0.0} fps，累计 {framesSent} 帧");
+        }
+    }
+
+    private byte[] Capture()
+    {
+        var prevTarget = source.targetTexture;
+        var prevActive = RenderTexture.active;
+
+        source.targetTexture = _rt;
+        source.Render();                       // 只渲染这一台相机到 _rt，不碰屏幕
+        source.targetTexture = prevTarget;
+
+        RenderTexture.active = _rt;
+        _tex.ReadPixels(new Rect(0, 0, width, height), 0, 0, false);
+        _tex.Apply(false);
+        RenderTexture.active = prevActive;
+
+        return ImageConversion.EncodeToJPG(_tex, quality);
+    }
+
+    private async Task SendAsync(byte[] payload)
+    {
+        try
+        {
+            await _ws.SendAsync(new ArraySegment<byte>(payload), WebSocketMessageType.Binary, true, _cts.Token);
+            framesSent++;
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[CameraStreamer] 发送中断：{e.Message}");
+            DropConnection();
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _sending, 0);
+        }
+    }
+
+    private void KickConnect()
+    {
+        if (_cts == null || _cts.IsCancellationRequested) return;
+        if (_ws != null && _ws.State == WebSocketState.Open) return;
+        if (Time.unscaledTime < _nextTry) return;
+
+        if (Interlocked.CompareExchange(ref _connecting, 1, 0) != 0)
+        {
+            // 上一次连接卡住了（ConnectAsync 在个别网络状态下不返回）→ 超时后放行
+            if (_stuckAt <= 0f) _stuckAt = Time.unscaledTime;
+            else if (Time.unscaledTime - _stuckAt > 8f)
+            {
+                if (_warnedStuck++ % 5 == 0)
+                    Debug.LogWarning("[CameraStreamer] 上次连接卡住，强制重来");
+                Interlocked.Exchange(ref _connecting, 0);
+                _stuckAt = 0f;
+                _nextTry = Time.unscaledTime;
+            }
+            return;
+        }
+
+        _stuckAt = 0f;
+        _nextTry = Time.unscaledTime + Mathf.Max(1f, retrySeconds);
+        _ = ConnectAsync();
+    }
+
+    private async Task ConnectAsync()
+    {
+        try
+        {
+            var ws = new ClientWebSocket();
+            using (var to = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token))
+            {
+                to.CancelAfter(TimeSpan.FromSeconds(connectTimeout));
+                await ws.ConnectAsync(new Uri(url), to.Token);
+            }
+            _ws = ws;
+            connected = true;
+            _statAt = Time.unscaledTime;
+            _framesInWindow = 0;
+            Debug.Log($"[CameraStreamer] 已连接 {url}");
+            await ReceiveLoop();
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception e)
+        {
+            if (_warnedStuck++ % 5 == 0)
+                Debug.LogWarning($"[CameraStreamer] 连接失败：{e.Message}（{retrySeconds}s 后重试）");
+        }
+        finally { Interlocked.Exchange(ref _connecting, 0); }
+    }
+
+    private async Task ReceiveLoop()
+    {
+        var buf = new byte[256];
+        try
+        {
+            while (_ws != null && _ws.State == WebSocketState.Open)
+            {
+                var r = await _ws.ReceiveAsync(new ArraySegment<byte>(buf), _cts.Token);
+                if (r.MessageType == WebSocketMessageType.Close) break;
+            }
+        }
+        catch { }
+        finally { DropConnection(); }
+    }
+
+    private void DropConnection()
+    {
+        connected = false;
+        try { _ws?.Dispose(); } catch { }
+        _ws = null;
+    }
+
+    void OnDestroy()
+    {
+        try { _cts?.Cancel(); } catch { }
+        DropConnection();
+        if (_rt != null) { _rt.Release(); Destroy(_rt); _rt = null; }
+        if (_tex != null) { Destroy(_tex); _tex = null; }
+    }
+}
+
+/// <summary>
+/// 进入 Play 时自动给主相机挂上推流器。
+/// 这样不用改场景、不用手动拖组件 —— 搭建好的场景被重建也不会丢。
+/// 不想要推流时，把自己的 CameraStreamer 挂上并把 autoStart 关掉即可。
+/// </summary>
+public static class CameraStreamerBootstrap
+{
+    public static bool autoStart = true;
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+    private static void Boot()
+    {
+        if (!autoStart) return;
+        if (UnityEngine.Object.FindAnyObjectByType<CameraStreamer>() != null) return;
+
+        var cam = Camera.main;
+        if (cam == null)
+        {
+            var all = Camera.allCameras;
+            if (all != null && all.Length > 0) cam = all[0];
+        }
+        if (cam == null) return;
+
+        var s = cam.gameObject.AddComponent<CameraStreamer>();
+        s.source = cam;
+        Debug.Log($"[CameraStreamer] 已挂到相机 {cam.name}，开始向控制台推流");
+    }
+}

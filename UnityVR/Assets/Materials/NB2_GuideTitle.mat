@@ -1,0 +1,62 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: NB2_GuideTitle
+  m_Shader: {fileID: 4800000, guid: 400d3629a79404fde8ef65eb83152ec5, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_LockedProperties: 
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _MainTex:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Ints: []
+    m_Floats:
+    - _BodyAlpha: 0.84
+    - _BodyGain: 0.95
+    - _Breathe: 0.07
+    - _CharCount: 11
+    - _Drift: 0.035
+    - _GlowRadius: 1.5
+    - _GlowStrength: 1.10
+    - _GlowWide: 0.14
+    - _InkHi: 0.5
+    - _InkLo: 0.15
+    - _LineCount: 2
+    - _PopOvershoot: 0.42
+    - _PopSeconds: 0.55
+    - _Reveal: 1
+    - _Rise: 0
+    - _Shimmer: 0.55
+    - _Softness: 0.3
+    - _Stagger: 0.05
+    - _Sway: 0
+    - _Wipe: 1
+    m_Colors:
+    - _ColGold: {r: 1, g: 0.88, b: 0.58, a: 1}
+    - _ColMint: {r: 0.64, g: 0.95, b: 0.8, a: 1}
+    - _ColPink: {r: 1, g: 0.72, b: 0.86, a: 1}
+    - _ColTop: {r: 1, g: 0.97, b: 0.92, a: 1}
+    - _ColViolet: {r: 0.78, g: 0.68, b: 1, a: 1}
+    - _GlowColor: {r: 1.15, g: 0.98, b: 1.55, a: 1}
+    - _LocalMax: {r: 1, g: 1, b: 0, a: 0}
+    - _LocalMin: {r: -1, g: -1, b: 0, a: 0}
+  m_BuildTextureStacks: []
+  m_AllowLocking: 1

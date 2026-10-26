@@ -1,0 +1,2507 @@
+// NeuroBloomSceneBuilderV2.cs —— 梦幻童话风森林场景生成器（V2）
+//
+// 与 V1（NeuroBloomSceneBuilder.cs）的关系：
+//   * V1 保留不动，可随时回退。
+//   * V2 沿用 V1 的全部外部约定：
+//       - 生成的场景仍保存到 Assets/Scenes/NeuroBloom.unity（NeuroBloomRender.cs 写死这个路径）
+//       - 根对象 Main Camera / Sun / Fog / GuideText / NeuroBloomManager / CrystalLight / Ambient 保持同名
+//       - NeuroBloomManager 上仍挂 BrainBridge + NeuroWorldController，并接好全部引用
+//       - 天空盒材质仍暴露 _SkyTint / _GroundColor / _AtmosphereThickness / _Exposure
+//   * V2 新增：起伏地形 + 溪流 + 蜿蜒小径、明亮区/昏暗区分区、程序化草叶与花（粒子化）、
+//     自发光蘑菇、萤火虫、丁达尔光束、小鸟与蝴蝶、真实 HDR Bloom 后处理。
+//
+// 目标渲染管线：Built-in RP（不引入 URP / HDRP / Post Processing Stack）。
+//
+// 菜单：
+//   NeuroBloom/一键搭建场景 v2         —— 构建并保存场景
+//   NeuroBloom/渲染四态对比图          —— 依次构建 4 种脑状态并出图（L2a 可读性测试用）
+//
+// 所有程序化 Mesh / Texture / Material 都会写成资产（Assets/Meshes|Textures|Materials/NB2_*），
+// 否则场景保存后引用会丢。
+
+using System.Collections.Generic;
+using System.IO;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+using UnityEngine.Rendering;
+
+public static class NeuroBloomSceneBuilderV2
+{
+    // ------------------------------------------------------------------ 路径
+    private const string ScenePath = "Assets/Scenes/NeuroBloom.unity";
+    private const string MeshDir   = "Assets/Meshes";
+    private const string TexDir    = "Assets/Textures";
+    private const string MatDir    = "Assets/Materials";
+
+    private static System.Random _rnd;
+
+    // ------------------------------------------------------------ 布局常量
+    private const float CamX = 0.0f;
+    private const float CamY = 2.9f;
+    private const float CamZ = -10.5f;
+    private const float WaterY = -0.32f;
+
+    private const float TerrX0 = -32f, TerrX1 = 32f;
+    private const float TerrZ0 = -20f, TerrZ1 = 30f;
+
+    // 主光方向（与 Sun 的 rotation 一致）
+    private static readonly Vector3 SunEuler = new Vector3(46f, -34f, 0f);
+
+    // 与 NeuroWorldController 完全一致的调色常量（保证预览＝实际运行）
+    private static readonly Color SkyTopCalm      = new Color(0.22f, 0.48f, 0.90f);
+    private static readonly Color SkyTopStorm     = new Color(0.16f, 0.17f, 0.24f);
+    private static readonly Color SkyHorizonCalm  = new Color(0.80f, 0.88f, 1.00f);
+    private static readonly Color SkyHorizonStorm = new Color(0.34f, 0.34f, 0.40f);
+    private static readonly Color FogCalm         = new Color(0.74f, 0.84f, 0.92f);
+    private static readonly Color FogStorm        = new Color(0.36f, 0.37f, 0.43f);
+    private static readonly Color SunCalm         = new Color(1.00f, 0.96f, 0.85f);
+    private static readonly Color SunStorm        = new Color(0.55f, 0.62f, 0.78f);
+
+    // ================================================================== 地形
+    private static float PathX(float z)
+    {
+        return Mathf.Sin(z * 0.22f) * 2.6f + Mathf.Sin(z * 0.07f) * 1.4f;
+    }
+
+    private static float StreamX(float z)
+    {
+        return -6.4f + Mathf.Sin(z * 0.16f) * 2.1f;
+    }
+
+    private static float TerrainHeight(float x, float z)
+    {
+        float n1 = Mathf.PerlinNoise((x + 100f) * 0.045f, (z + 100f) * 0.045f);
+        float n2 = Mathf.PerlinNoise((x + 300f) * 0.115f, (z + 300f) * 0.115f);
+        float h = (n1 - 0.45f) * 4.2f + (n2 - 0.5f) * 1.1f;
+
+        // 远景（z > 6）下沉成谷地：配合密林树冠与低照度形成"昏暗区"
+        float valley = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(6f, 16f, z));
+        h -= valley * 1.8f;
+
+        // 两侧抬升为丘，把视线收束到小径上
+        float side = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(8f, 22f, Mathf.Abs(x)));
+        h += side * 2.6f;
+
+        // 相机脚下压平到 y=0 —— 否则噪声可能把相机埋进地里 / 顶到眼前
+        float dcx = x - CamX, dcz = z - CamZ;
+        float kc = Mathf.Clamp01(1f - Mathf.Sqrt(dcx * dcx + dcz * dcz) / 7.0f);
+        kc *= kc;
+        h = Mathf.Lerp(h, 0f, kc);
+
+        // 小径走廊压平
+        float d = Mathf.Abs(x - PathX(z));
+        float k = Mathf.Clamp01(1f - d / 2.4f);
+        k *= k;
+        float pathH = 0.05f * Mathf.Sin(z * 0.1f);
+        h = Mathf.Lerp(h, pathH, k);
+
+        // 溪流河道下切：河床必须是"平底 + 陡岸"，否则水面片会浮在地面之上。
+        // 平底覆盖 sd <= 2.2，2.2~3.0 之间迅速抬升回原地形。
+        float sd = Mathf.Abs(x - StreamX(z));
+        float st = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(3.0f, 2.2f, sd));
+        float bedY = WaterY - 0.55f - 0.12f * Mathf.Sin(z * 0.31f);
+        h = Mathf.Lerp(h, bedY, st);
+
+        return h;
+    }
+
+    // ============================================================ 小工具函数
+    private static float R(float a, float b)
+    {
+        return a + (float)_rnd.NextDouble() * (b - a);
+    }
+
+    private static int RI(int a, int b)
+    {
+        return _rnd.Next(a, b);
+    }
+
+    private static void SaveAsset(UnityEngine.Object o, string path)
+    {
+        string dir = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+        AssetDatabase.DeleteAsset(path);
+        AssetDatabase.CreateAsset(o, path);
+    }
+
+    private static GameObject New(string name, Transform parent)
+    {
+        var go = new GameObject(name);
+        if (parent != null) go.transform.SetParent(parent, false);
+        return go;
+    }
+
+    private static GameObject Prim(PrimitiveType type, string name, Transform parent,
+                                   Vector3 localPos, Vector3 localEuler, Vector3 localScale,
+                                   Material mat)
+    {
+        var go = GameObject.CreatePrimitive(type);
+        go.name = name;
+        var col = go.GetComponent<Collider>();
+        if (col != null) UnityEngine.Object.DestroyImmediate(col);
+        if (parent != null) go.transform.SetParent(parent, false);
+        go.transform.localPosition = localPos;
+        go.transform.localEulerAngles = localEuler;
+        go.transform.localScale = localScale;
+        var r = go.GetComponent<MeshRenderer>();
+        if (r != null && mat != null) r.sharedMaterial = mat;
+        return go;
+    }
+
+    private static Shader FindShader(params string[] names)
+    {
+        for (int i = 0; i < names.Length; i++)
+        {
+            var s = Shader.Find(names[i]);
+            if (s != null && s.isSupported) return s;
+        }
+        return null;
+    }
+
+    // ============================================================ Shader 选取
+    private static Shader StandardShader { get { return FindShader("Standard", "Legacy Shaders/Diffuse"); } }
+    private static Shader AdditiveShader { get { return FindShader("Legacy Shaders/Particles/Additive", "Particles/Standard Unlit", "Sprites/Default", "Unlit/Transparent"); } }
+
+    // ============================================================ Mesh 构建
+    private static Mesh BuildTerrainMesh()
+    {
+        int nx = 73, nz = 73;
+        var verts = new Vector3[nx * nz];
+        var uvs = new Vector2[nx * nz];
+        var tris = new List<int>((nx - 1) * (nz - 1) * 6);
+
+        for (int j = 0; j < nz; j++)
+        {
+            float v = j / (float)(nz - 1);
+            float z = Mathf.Lerp(TerrZ0, TerrZ1, v);
+            for (int i = 0; i < nx; i++)
+            {
+                float u = i / (float)(nx - 1);
+                float x = Mathf.Lerp(TerrX0, TerrX1, u);
+                int k = j * nx + i;
+                verts[k] = new Vector3(x, TerrainHeight(x, z), z);
+                uvs[k] = new Vector2(u * 24f, v * 24f);
+            }
+        }
+
+        for (int j = 0; j < nz - 1; j++)
+        {
+            for (int i = 0; i < nx - 1; i++)
+            {
+                int a = j * nx + i, b = a + 1, c = a + nx, d = c + 1;
+                tris.Add(a); tris.Add(c); tris.Add(b);
+                tris.Add(b); tris.Add(c); tris.Add(d);
+            }
+        }
+
+        var m = new Mesh { name = "NB2_Ground" };
+        m.indexFormat = IndexFormat.UInt32;
+        m.vertices = verts;
+        m.uv = uvs;
+        m.SetTriangles(tris, 0);
+        m.RecalculateNormals();
+        m.RecalculateBounds();
+        return m;
+    }
+
+    private static Mesh BuildRibbonMesh(string name, System.Func<float, float> centerX,
+                                        float z0, float z1, float width, float step,
+                                        System.Func<float, float, float> yAt)
+    {
+        int n = Mathf.Max(2, Mathf.RoundToInt((z1 - z0) / step) + 1);
+        var verts = new Vector3[n * 2];
+        var uvs = new Vector2[n * 2];
+        var tris = new List<int>((n - 1) * 6);
+        float hw = width * 0.5f;
+
+        for (int i = 0; i < n; i++)
+        {
+            float v = i / (float)(n - 1);
+            float z = Mathf.Lerp(z0, z1, v);
+            float cx = centerX(z);
+            verts[i * 2] = new Vector3(cx - hw, yAt(cx - hw, z), z);
+            verts[i * 2 + 1] = new Vector3(cx + hw, yAt(cx + hw, z), z);
+            uvs[i * 2] = new Vector2(0f, v * 16f);
+            uvs[i * 2 + 1] = new Vector2(1f, v * 16f);
+        }
+
+        for (int i = 0; i < n - 1; i++)
+        {
+            int a = i * 2, b = a + 1, c = a + 2, d = a + 3;
+            tris.Add(a); tris.Add(c); tris.Add(b);
+            tris.Add(b); tris.Add(c); tris.Add(d);
+        }
+
+        var m = new Mesh { name = name };
+        m.vertices = verts;
+        m.uv = uvs;
+        m.SetTriangles(tris, 0);
+        m.RecalculateNormals();
+        m.RecalculateBounds();
+        return m;
+    }
+
+    /// <summary>一根草叶：底宽顶尖、轻微前倾、双面。</summary>
+    private static Mesh BuildBladeMesh()
+    {
+        var verts = new List<Vector3>();
+        var uvs = new List<Vector2>();
+        var tris = new List<int>();
+        int seg = 4;
+
+        for (int i = 0; i <= seg; i++)
+        {
+            float t = i / (float)seg;
+            float w = Mathf.Lerp(0.055f, 0.004f, t * t);
+            float y = t * 0.95f;
+            float bend = t * t * 0.26f;
+            verts.Add(new Vector3(-w, y, bend));
+            verts.Add(new Vector3(w, y, bend));
+            uvs.Add(new Vector2(0f, t));
+            uvs.Add(new Vector2(1f, t));
+        }
+
+        for (int i = 0; i < seg; i++)
+        {
+            int b = i * 2;
+            tris.Add(b); tris.Add(b + 2); tris.Add(b + 1);
+            tris.Add(b + 1); tris.Add(b + 3); tris.Add(b + 2);
+            // 背面
+            tris.Add(b); tris.Add(b + 1); tris.Add(b + 2);
+            tris.Add(b + 1); tris.Add(b + 3); tris.Add(b + 2);
+        }
+
+        var m = new Mesh { name = "NB2_Blade" };
+        m.SetVertices(verts);
+        m.SetUVs(0, uvs);
+        m.SetTriangles(tris, 0);
+        m.RecalculateBounds();
+        m.normals = MakeNormals(verts.Count, new Vector3(0f, 0.3f, -1f).normalized);
+        return m;
+    }
+
+    /// <summary>一朵花：6 枚花瓣 + 花心，双面。</summary>
+    private static Mesh BuildFlowerMesh()
+    {
+        var verts = new List<Vector3>();
+        var uvs = new List<Vector2>();
+        var tris = new List<int>();
+        int petals = 6;
+        float twoPi = Mathf.PI * 2f;
+
+        for (int p = 0; p < petals; p++)
+        {
+            float a0 = p / (float)petals * twoPi;
+            float a1 = (p + 1) / (float)petals * twoPi;
+            float am = (a0 + a1) * 0.5f;
+
+            Vector3 d0 = new Vector3(Mathf.Cos(a0), 0f, Mathf.Sin(a0));
+            Vector3 d1 = new Vector3(Mathf.Cos(a1), 0f, Mathf.Sin(a1));
+            Vector3 dm = new Vector3(Mathf.Cos(am), 0f, Mathf.Sin(am));
+            Vector3 perp = new Vector3(-dm.z, 0f, dm.x);
+
+            Vector3 bl = d0 * 0.10f;
+            Vector3 br = d1 * 0.10f;
+            Vector3 tl = dm * 0.46f + perp * 0.10f + Vector3.up * 0.05f;
+            Vector3 tr = dm * 0.46f - perp * 0.10f + Vector3.up * 0.05f;
+
+            int b = verts.Count;
+            verts.Add(bl); verts.Add(br); verts.Add(tr); verts.Add(tl);
+            uvs.Add(new Vector2(0.5f, 0f));
+            uvs.Add(new Vector2(0.5f, 0f));
+            uvs.Add(new Vector2(1f, 1f));
+            uvs.Add(new Vector2(0f, 1f));
+
+            tris.Add(b); tris.Add(b + 1); tris.Add(b + 2);
+            tris.Add(b); tris.Add(b + 2); tris.Add(b + 3);
+            // 背面
+            tris.Add(b); tris.Add(b + 2); tris.Add(b + 1);
+            tris.Add(b); tris.Add(b + 3); tris.Add(b + 2);
+        }
+
+        // 花心（朝上的小圆盘）
+        {
+            int c = verts.Count;
+            verts.Add(new Vector3(0f, 0.045f, 0f));
+            uvs.Add(new Vector2(0.5f, 0.5f));
+            int ring = 8;
+            for (int i = 0; i <= ring; i++)
+            {
+                float a = i / (float)ring * twoPi;
+                verts.Add(new Vector3(Mathf.Cos(a) * 0.10f, 0.03f, Mathf.Sin(a) * 0.10f));
+                uvs.Add(new Vector2(0.5f + Mathf.Cos(a) * 0.5f, 0.5f + Mathf.Sin(a) * 0.5f));
+            }
+            for (int i = 0; i < ring; i++)
+            {
+                tris.Add(c); tris.Add(c + 2 + i); tris.Add(c + 1 + i);
+            }
+        }
+
+        var m = new Mesh { name = "NB2_Flower" };
+        m.SetVertices(verts);
+        m.SetUVs(0, uvs);
+        m.SetTriangles(tris, 0);
+        m.RecalculateBounds();
+        m.normals = MakeNormals(verts.Count, Vector3.up);
+        return m;
+    }
+
+    /// <summary>野花：细茎（两片交叉细带）+ 小花头，双面。基准高度约 0.55，供合并成花海。</summary>
+    private static Mesh BuildFieldFlowerMesh()
+    {
+        var verts = new List<Vector3>();
+        var uvs = new List<Vector2>();
+        var tris = new List<int>();
+        float twoPi = Mathf.PI * 2f;
+        const float stemH = 0.50f;
+        const float w0 = 0.030f, w1 = 0.014f;
+        const float hs = 0.38f;          // 花头缩放
+        const float hy = stemH;          // 花头高度
+
+        // ---- 细茎：两片互相垂直的细带 ----
+        for (int q = 0; q < 2; q++)
+        {
+            int b = verts.Count;
+            Vector3 ax = (q == 0) ? Vector3.right : Vector3.forward;
+            verts.Add(-ax * w0);
+            verts.Add(ax * w0);
+            verts.Add(-ax * w1 + Vector3.up * stemH);
+            verts.Add(ax * w1 + Vector3.up * stemH);
+            uvs.Add(new Vector2(0f, 0f)); uvs.Add(new Vector2(1f, 0f));
+            uvs.Add(new Vector2(0f, 1f)); uvs.Add(new Vector2(1f, 1f));
+            tris.Add(b); tris.Add(b + 2); tris.Add(b + 1);
+            tris.Add(b + 1); tris.Add(b + 2); tris.Add(b + 3);
+            tris.Add(b); tris.Add(b + 1); tris.Add(b + 2);
+            tris.Add(b + 1); tris.Add(b + 3); tris.Add(b + 2);
+        }
+
+        // ---- 花头：6 枚花瓣 ----
+        const int petals = 6;
+        for (int p = 0; p < petals; p++)
+        {
+            float a0 = p / (float)petals * twoPi;
+            float a1 = (p + 1) / (float)petals * twoPi;
+            float am = (a0 + a1) * 0.5f;
+
+            Vector3 d0 = new Vector3(Mathf.Cos(a0), 0f, Mathf.Sin(a0));
+            Vector3 d1 = new Vector3(Mathf.Cos(a1), 0f, Mathf.Sin(a1));
+            Vector3 dm = new Vector3(Mathf.Cos(am), 0f, Mathf.Sin(am));
+            Vector3 perp = new Vector3(-dm.z, 0f, dm.x);
+
+            Vector3 bl = d0 * (0.10f * hs) + Vector3.up * hy;
+            Vector3 br = d1 * (0.10f * hs) + Vector3.up * hy;
+            Vector3 tl = dm * (0.46f * hs) + perp * (0.10f * hs) + Vector3.up * (hy + 0.05f * hs);
+            Vector3 tr = dm * (0.46f * hs) - perp * (0.10f * hs) + Vector3.up * (hy + 0.05f * hs);
+
+            int b = verts.Count;
+            verts.Add(bl); verts.Add(br); verts.Add(tr); verts.Add(tl);
+            uvs.Add(new Vector2(0.5f, 0f)); uvs.Add(new Vector2(0.5f, 0f));
+            uvs.Add(new Vector2(1f, 1f)); uvs.Add(new Vector2(0f, 1f));
+
+            tris.Add(b); tris.Add(b + 1); tris.Add(b + 2);
+            tris.Add(b); tris.Add(b + 2); tris.Add(b + 3);
+            tris.Add(b); tris.Add(b + 2); tris.Add(b + 1);
+            tris.Add(b); tris.Add(b + 3); tris.Add(b + 2);
+        }
+
+        // ---- 花心（朝上的小圆盘，绕序朝 +Y） ----
+        {
+            int c = verts.Count;
+            verts.Add(new Vector3(0f, hy + 0.045f * hs, 0f));
+            uvs.Add(new Vector2(0.5f, 0.5f));
+            const int ring = 8;
+            for (int i = 0; i <= ring; i++)
+            {
+                float a = i / (float)ring * twoPi;
+                verts.Add(new Vector3(Mathf.Cos(a) * 0.10f * hs, hy + 0.03f * hs, Mathf.Sin(a) * 0.10f * hs));
+                uvs.Add(new Vector2(0.5f + Mathf.Cos(a) * 0.5f, 0.5f + Mathf.Sin(a) * 0.5f));
+            }
+            for (int i = 0; i < ring; i++)
+            {
+                tris.Add(c); tris.Add(c + 2 + i); tris.Add(c + 1 + i);
+            }
+        }
+
+        var m = new Mesh { name = "NB2_FieldFlower" };
+        m.SetVertices(verts);
+        m.SetUVs(0, uvs);
+        m.SetTriangles(tris, 0);
+        m.RecalculateBounds();
+        m.normals = MakeNormals(verts.Count, Vector3.up);
+        return m;
+    }
+
+    /// <summary>一片翅膀：x ∈ [0,1]（枢轴在 0），z ∈ [-0.5,0.5]，双面，法线朝上。</summary>
+    private static Mesh BuildWingMesh()
+    {
+        var verts = new List<Vector3>
+        {
+            new Vector3(0f, 0f, -0.5f),
+            new Vector3(1f, 0f, -0.5f),
+            new Vector3(1f, 0f,  0.5f),
+            new Vector3(0f, 0f,  0.5f)
+        };
+        var uvs = new List<Vector2>
+        {
+            new Vector2(0f, 0f),
+            new Vector2(1f, 0f),
+            new Vector2(1f, 1f),
+            new Vector2(0f, 1f)
+        };
+        var tris = new List<int>
+        {
+            0, 2, 1, 0, 3, 2,   // 正面
+            0, 1, 2, 0, 2, 3    // 背面
+        };
+
+        var m = new Mesh { name = "NB2_Wing" };
+        m.SetVertices(verts);
+        m.SetUVs(0, uvs);
+        m.SetTriangles(tris, 0);
+        m.RecalculateBounds();
+        m.normals = MakeNormals(verts.Count, Vector3.up);
+        return m;
+    }
+
+    // -------------------------------------------- B 阶段强交互：播种花的花瓣 / 花心球
+    /// <summary>
+    /// 单片花瓣：躺在 XZ 平面、从原点沿 +Z 伸出，枢轴就在原点 ——
+    /// 这样绕本地 X 轴旋转即可表达"竖直合拢的花苞 ↔ 平展张开的花"。
+    /// 正反两遍三角 = 双面可见，避开透明排序问题（与 BuildFlowerMesh 同一套做法）。
+    /// </summary>
+    private static Mesh BuildPetalMesh()
+    {
+        const int seg = 7;
+        const float len = 0.46f;
+        const float wid = 0.175f;
+        const float cup = 0.055f;
+
+        var verts = new List<Vector3>();
+        var uvs = new List<Vector2>();
+        var tris = new List<int>();
+
+        for (int i = 0; i <= seg; i++)
+        {
+            float t = (float)i / seg;
+            // ⚠️ 必须夹到 0：t=1 时 Mathf.Sin(Mathf.PI) = -8.7e-8（负数），
+            // Pow(负数, 0.65) = NaN → 网格 bounds 变 NaN → 整朵花被视锥剔除，画面上什么也看不到。
+            float w = wid * Mathf.Pow(Mathf.Max(0f, Mathf.Sin(Mathf.PI * t)), 0.65f);
+            float y = cup * Mathf.Sin(Mathf.PI * t);
+            float z = len * t;
+            verts.Add(new Vector3(-w, y, z));
+            verts.Add(new Vector3(w, y, z));
+            uvs.Add(new Vector2(0f, t));
+            uvs.Add(new Vector2(1f, t));
+        }
+
+        for (int i = 0; i < seg; i++)
+        {
+            int a = i * 2, b = a + 1, c = a + 2, d = a + 3;
+            tris.Add(a); tris.Add(c); tris.Add(b);
+            tris.Add(b); tris.Add(c); tris.Add(d);
+            tris.Add(a); tris.Add(b); tris.Add(c);
+            tris.Add(b); tris.Add(d); tris.Add(c);
+        }
+
+        var m = new Mesh { name = "NB2_Petal" };
+        m.SetVertices(verts);
+        m.SetUVs(0, uvs);
+        m.SetTriangles(tris, 0);
+        m.RecalculateBounds();
+        m.normals = MakeNormals(verts.Count, Vector3.up);
+        return m;
+    }
+
+    /// <summary>小圆球（半径 0.5，靠 transform 缩放定大小）：种子与花心共用。</summary>
+    private static Mesh BuildBlobMesh()
+    {
+        const int rings = 6;
+        const int slices = 10;
+        const float rad = 0.5f;
+
+        var verts = new List<Vector3>();
+        var uvs = new List<Vector2>();
+        var tris = new List<int>();
+
+        for (int y = 0; y <= rings; y++)
+        {
+            float v = (float)y / rings;
+            float phi = v * Mathf.PI;
+            for (int x = 0; x <= slices; x++)
+            {
+                float u = (float)x / slices;
+                float theta = u * Mathf.PI * 2f;
+                verts.Add(new Vector3(
+                    rad * Mathf.Sin(phi) * Mathf.Cos(theta),
+                    rad * Mathf.Cos(phi),
+                    rad * Mathf.Sin(phi) * Mathf.Sin(theta)));
+                uvs.Add(new Vector2(u, 1f - v));
+            }
+        }
+
+        int row = slices + 1;
+        for (int y = 0; y < rings; y++)
+        {
+            for (int x = 0; x < slices; x++)
+            {
+                int a = y * row + x, b = a + 1, c = a + row, d = c + 1;
+                tris.Add(a); tris.Add(b); tris.Add(c);
+                tris.Add(b); tris.Add(d); tris.Add(c);
+            }
+        }
+
+        var m = new Mesh { name = "NB2_Blob" };
+        m.SetVertices(verts);
+        m.SetUVs(0, uvs);
+        m.SetTriangles(tris, 0);
+        m.RecalculateBounds();
+        m.RecalculateNormals();
+        return m;
+    }
+
+    /// <summary>
+    /// 花茎：6 棱微锥形圆管。半径 0.5、高 1、原点居中（y ∈ [-0.5, 0.5]），
+    /// 这样运行时只要 scale = (粗细, 茎高, 粗细) 就能得到任意高度的茎。
+    /// 带上下封口 —— 免得上端露出空心。
+    /// </summary>
+    private static Mesh BuildStemMesh()
+    {
+        const int sides = 6;
+        const float rBot = 0.5f, rTop = 0.36f;
+
+        var verts = new List<Vector3>();
+        var uvs = new List<Vector2>();
+        var tris = new List<int>();
+
+        for (int i = 0; i <= sides; i++)
+        {
+            float t = (float)i / sides;
+            float a = t * Mathf.PI * 2f;
+            float c = Mathf.Cos(a), s = Mathf.Sin(a);
+            verts.Add(new Vector3(c * rBot, -0.5f, s * rBot));
+            verts.Add(new Vector3(c * rTop,  0.5f, s * rTop));
+            uvs.Add(new Vector2(t, 0f));
+            uvs.Add(new Vector2(t, 1f));
+        }
+
+        for (int i = 0; i < sides; i++)
+        {
+            int a = i * 2, b = a + 1, c = a + 2, d = a + 3;
+            tris.Add(a); tris.Add(b); tris.Add(c);
+            tris.Add(b); tris.Add(d); tris.Add(c);
+        }
+
+        int bc = verts.Count; verts.Add(new Vector3(0f, -0.5f, 0f)); uvs.Add(new Vector2(0.5f, 0.5f));
+        int tc = verts.Count; verts.Add(new Vector3(0f,  0.5f, 0f)); uvs.Add(new Vector2(0.5f, 0.5f));
+        for (int i = 0; i < sides; i++)
+        {
+            int a = i * 2, b = a + 2;
+            tris.Add(bc); tris.Add(a); tris.Add(b);           // 底盖（法线朝下）
+            tris.Add(tc); tris.Add(b + 1); tris.Add(a + 1);   // 顶盖（法线朝上）
+        }
+
+        var m = new Mesh { name = "NB2_Stem" };
+        m.SetVertices(verts);
+        m.SetUVs(0, uvs);
+        m.SetTriangles(tris, 0);
+        m.RecalculateBounds();
+        m.RecalculateNormals();
+        return m;
+    }
+
+    private static Vector3[] MakeNormals(int count, Vector3 n)
+    {
+        var arr = new Vector3[count];
+        for (int i = 0; i < count; i++) arr[i] = n;
+        return arr;
+    }
+
+    // ========================================================== Texture 构建
+    // ==================================================== 夜间：星空与月亮贴图
+    /// <summary>星空贴图：黑底 + 一批大小/亮度不一的星点（柔边，符合梦幻童话风）。</summary>
+    private static Texture2D BuildStarTexture(int size, int count, int seed)
+    {
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        tex.wrapMode = TextureWrapMode.Repeat;
+        tex.filterMode = FilterMode.Bilinear;
+        var px = new Color32[size * size];
+        for (int i = 0; i < px.Length; i++) px[i] = new Color32(0, 0, 0, 0);
+
+        var rnd = new System.Random(seed);
+        for (int s = 0; s < count; s++)
+        {
+            int cx = rnd.Next(size), cy = rnd.Next(size);
+            float bright = Mathf.Lerp(0.22f, 1f, Mathf.Pow((float)rnd.NextDouble(), 2.2f));  // 多数暗、少数亮
+            float warm = (float)rnd.NextDouble();
+            float rr = 1f + 1.4f * Mathf.Pow((float)rnd.NextDouble(), 2f);                   // 星点半径 1~2.4 px
+            int rad = Mathf.CeilToInt(rr) + 1;
+            Color baseCol = Color.Lerp(new Color(0.70f, 0.82f, 1.00f), new Color(1.00f, 0.92f, 0.80f), warm);
+            for (int dy = -rad; dy <= rad; dy++)
+            {
+                for (int dx = -rad; dx <= rad; dx++)
+                {
+                    float d = Mathf.Sqrt(dx * dx + dy * dy);
+                    if (d > rad) continue;
+                    float a = Mathf.Clamp01(1f - d / (rr * 2.2f));
+                    a = a * a;
+                    int X = ((cx + dx) % size + size) % size;      // 环绕，避免接缝断裂
+                    int Y = ((cy + dy) % size + size) % size;
+                    int idx = Y * size + X;
+                    float rr2 = baseCol.r * bright * a, gg = baseCol.g * bright * a, bb = baseCol.b * bright * a;
+                    var oldPx = px[idx];
+                    px[idx] = new Color32(
+                        (byte)Mathf.Clamp(oldPx.r + rr2 * 255f, 0f, 255f),
+                        (byte)Mathf.Clamp(oldPx.g + gg * 255f, 0f, 255f),
+                        (byte)Mathf.Clamp(oldPx.b + bb * 255f, 0f, 255f),
+                        (byte)Mathf.Clamp(oldPx.a + a * 255f, 0f, 255f));
+                }
+            }
+        }
+        tex.SetPixels32(px);
+        tex.Apply();
+        return tex;
+    }
+
+    /// <summary>月亮贴图：亮核 + 柔边外晕 + 几点浅浅的环形山。</summary>
+    private static Texture2D BuildMoonTexture(int size)
+    {
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        var px = new Color32[size * size];
+        float c = (size - 1) * 0.5f;
+        var rnd = new System.Random(20261021);
+
+        const int craters = 7;
+        var cr = new float[craters * 3];
+        for (int i = 0; i < craters; i++)
+        {
+            float ang = (float)rnd.NextDouble() * Mathf.PI * 2f;
+            float rad = (float)rnd.NextDouble() * c * 0.55f;
+            cr[i * 3 + 0] = c + Mathf.Cos(ang) * rad;
+            cr[i * 3 + 1] = c + Mathf.Sin(ang) * rad;
+            cr[i * 3 + 2] = Mathf.Lerp(0.10f, 0.26f, (float)rnd.NextDouble()) * size * 0.25f;
+        }
+
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float dx = x - c, dy = y - c;
+                float d = Mathf.Sqrt(dx * dx + dy * dy) / c;                 // 0=中心 1=贴图边缘
+                float disc = Mathf.Clamp01((0.80f - d) / 0.05f);             // 月盘本体
+                float halo = Mathf.Pow(Mathf.Clamp01(1f - d), 3.0f) * 0.55f; // 外圈柔光
+                float a = Mathf.Clamp01(disc + halo);
+                if (a <= 0.001f) { px[y * size + x] = new Color32(0, 0, 0, 0); continue; }
+
+                float v = 0.94f;
+                for (int i = 0; i < craters; i++)
+                {
+                    float cdx = x - cr[i * 3 + 0], cdy = y - cr[i * 3 + 1];
+                    float cd = Mathf.Sqrt(cdx * cdx + cdy * cdy) / Mathf.Max(1f, cr[i * 3 + 2]);
+                    if (cd < 1f) v -= 0.16f * (1f - cd) * disc;
+                }
+                v = Mathf.Clamp01(v);
+                px[y * size + x] = new Color32((byte)(v * 255f), (byte)(v * 255f), (byte)(Mathf.Clamp01(v * 1.06f) * 255f),
+                                               (byte)(a * 255f));
+            }
+        }
+        tex.SetPixels32(px);
+        tex.Apply();
+        return tex;
+    }
+
+    private static Texture2D BuildSoftBlobTexture(int size, float power)
+    {
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, true);
+        tex.name = "NB2_GlowBlob";
+        var px = new Color32[size * size];
+        float half = size * 0.5f;
+
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float dx = (x + 0.5f - half) / half;
+                float dy = (y + 0.5f - half) / half;
+                float r = Mathf.Sqrt(dx * dx + dy * dy);
+                float a = Mathf.Pow(Mathf.Clamp01(1f - r), power);
+                byte b = (byte)Mathf.Clamp(Mathf.RoundToInt(a * 255f), 0, 255);
+                px[y * size + x] = new Color32(255, 255, 255, b);
+            }
+        }
+
+        tex.SetPixels32(px);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        tex.filterMode = FilterMode.Bilinear;
+        tex.Apply();
+        return tex;
+    }
+
+    private static Texture2D BuildBeamTexture(int w, int h)
+    {
+        var tex = new Texture2D(w, h, TextureFormat.RGBA32, true);
+        tex.name = "NB2_Beam";
+        var px = new Color32[w * h];
+
+        for (int y = 0; y < h; y++)
+        {
+            float v = (y + 0.5f) / h;
+            // 两端淡出，中段最亮
+            float vert = Mathf.Sin(v * Mathf.PI);
+            vert = Mathf.Pow(vert, 1.10f) * 0.70f;
+            for (int x = 0; x < w; x++)
+            {
+                float u = (x + 0.5f) / w;
+                float horiz = Mathf.Pow(Mathf.Clamp01(1f - Mathf.Abs(u * 2f - 1f)), 1.9f);
+                float a = vert * horiz;
+                byte b = (byte)Mathf.Clamp(Mathf.RoundToInt(a * 255f), 0, 255);
+                px[y * w + x] = new Color32(255, 255, 255, b);
+            }
+        }
+
+        tex.SetPixels32(px);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        tex.filterMode = FilterMode.Bilinear;
+        tex.Apply();
+        return tex;
+    }
+
+    private static Texture2D BuildRippleTexture(int size)
+    {
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, true);
+        tex.name = "NB2_Ripple";
+        var px = new Color32[size * size];
+
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float u = (x + 0.5f) / size;
+                float v = (y + 0.5f) / size;
+                float n = Mathf.PerlinNoise(u * 7f, v * 7f) * 0.6f
+                        + Mathf.PerlinNoise(u * 21f + 5f, v * 21f + 5f) * 0.4f;
+                float glare = Mathf.Pow(Mathf.Clamp01(n - 0.45f) * 2.2f, 1.4f);
+                byte r = (byte)Mathf.Clamp(Mathf.RoundToInt((0.42f + n * 0.28f) * 255f), 0, 255);
+                byte g = (byte)Mathf.Clamp(Mathf.RoundToInt((0.60f + n * 0.30f) * 255f), 0, 255);
+                byte b = (byte)Mathf.Clamp(Mathf.RoundToInt((0.66f + glare * 0.34f) * 255f), 0, 255);
+                px[y * size + x] = new Color32(r, g, b, 255);
+            }
+        }
+
+        tex.SetPixels32(px);
+        tex.wrapMode = TextureWrapMode.Repeat;
+        tex.filterMode = FilterMode.Bilinear;
+        tex.Apply();
+        return tex;
+    }
+
+    // 诊断：新建的环贴图 vs 磁盘上的环贴图，alpha 到底在哪一步丢的
+    public static void DebugRuneTex()
+    {
+        var t = BuildRuneTexture(256);
+        var p = t.GetPixels32();
+        int maxA = 0, at = 0;
+        for (int i = 0; i < p.Length; i++) if (p[i].a > maxA) { maxA = p[i].a; at = i; }
+        Debug.Log("[DIAGTEX] 内存新建 format=" + t.format
+                  + " alphaMax=" + maxA + " 首现idx=" + at
+                  + " (220,128).a=" + p[128 * 256 + 220].a
+                  + " (128,220).a=" + p[220 * 256 + 128].a
+                  + " (128,128).a=" + p[128 * 256 + 128].a);
+
+        var t2 = BuildBurstTexture(256);
+        var q2 = t2.GetPixels32();
+        int m2 = 0; for (int i = 0; i < q2.Length; i++) if (q2[i].a > m2) m2 = q2[i].a;
+        Debug.Log("[DIAGTEX] 内存新建Burst alphaMax=" + m2);
+
+        var disk = AssetDatabase.LoadAssetAtPath<Texture2D>(TexDir + "/NB2_Rune.asset");
+        if (disk != null)
+        {
+            var q = disk.GetPixels32();
+            int m = 0; for (int i = 0; i < q.Length; i++) if (q[i].a > m) m = q[i].a;
+            Debug.Log("[DIAGTEX] 磁盘 format=" + disk.format + " alphaMax=" + m
+                      + " readable=" + disk.isReadable
+                      + " (220,128).a=" + q[128 * 256 + 220].a);
+        }
+        else Debug.Log("[DIAGTEX] 磁盘贴图读不到");
+    }
+
+    private static Texture2D BuildRuneTexture(int size)
+    {
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, true);
+        tex.name = "NB2_Rune";
+        var px = new Color32[size * size];
+
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float u = (x + 0.5f) / size * 2f - 1f;
+                float v = (y + 0.5f) / size * 2f - 1f;
+                float r = Mathf.Sqrt(u * u + v * v);
+                float ang = Mathf.Atan2(v, u);
+
+                // 主环带（半径 0.72 附近最亮）
+                float band = Mathf.Pow(Mathf.Clamp01(1f - Mathf.Abs(r - 0.72f) / 0.16f), 1.6f);
+                // 角向波纹：8 段
+                float ripple = 0.55f + 0.45f * Mathf.Cos(ang * 8f);
+                // 内圈微光
+                float inner = Mathf.Pow(Mathf.Clamp01(1f - r / 0.62f), 3.0f) * 0.22f;
+
+                float a = Mathf.Clamp01(band * ripple + inner);
+                // 注意：Unity 的 Mathf.SmoothStep(from,to,t) 是 Lerp 语义，不是 GLSL 的 smoothstep(edge0,edge1,x)。
+                // 早先这里误用它，把整张贴图 alpha 乘成了约 1/64，导致光纹环在加法混合下一个像素都看不见。
+                float oe = Mathf.Clamp01((r - 0.92f) / 0.08f);
+                a *= 1f - oe * oe * (3f - 2f * oe);                          // 外缘收干净
+                byte ab = (byte)Mathf.Clamp(Mathf.RoundToInt(a * 255f), 0, 255);
+                px[y * size + x] = new Color32(255, 255, 255, ab);
+            }
+        }
+
+        tex.SetPixels32(px);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        tex.filterMode = FilterMode.Bilinear;
+        tex.Apply();
+        return tex;
+    }
+
+    private static Texture2D BuildBurstTexture(int size)
+    {
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, true);
+        tex.name = "NB2_Burst";
+        var px = new Color32[size * size];
+
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float u = (x + 0.5f) / size * 2f - 1f;
+                float v = (y + 0.5f) / size * 2f - 1f;
+                float r = Mathf.Sqrt(u * u + v * v);
+
+                // 更宽、更软的一圈光，外扩时像水波
+                float band = Mathf.Pow(Mathf.Clamp01(1f - Mathf.Abs(r - 0.80f) / 0.20f), 1.2f);
+                float oe = Mathf.Clamp01((r - 0.94f) / 0.06f);
+                float a = band * (1f - oe * oe * (3f - 2f * oe));
+
+                byte ab = (byte)Mathf.Clamp(Mathf.RoundToInt(a * 255f), 0, 255);
+                px[y * size + x] = new Color32(255, 255, 255, ab);
+            }
+        }
+
+        tex.SetPixels32(px);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        tex.filterMode = FilterMode.Bilinear;
+        tex.Apply();
+        return tex;
+    }
+
+    private static Texture2D BuildWingTexture(int size)
+    {
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, true);
+        tex.name = "NB2_Wing";
+        var px = new Color32[size * size];
+
+        // 两枚椭圆（前翅 + 后翅）取并集，边缘 1.5px 做柔化
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float u = ((x + 0.5f) / size) - 0.5f;
+                float v = ((y + 0.5f) / size) - 0.5f;
+
+                float e1 = 1f - Mathf.Sqrt((u - 0.04f) * (u - 0.04f) / (0.48f * 0.48f)
+                                         + (v - 0.12f) * (v - 0.12f) / (0.30f * 0.30f));
+                float e2 = 1f - Mathf.Sqrt((u - 0.10f) * (u - 0.10f) / (0.30f * 0.30f)
+                                         + (v + 0.26f) * (v + 0.26f) / (0.20f * 0.20f));
+                float d = Mathf.Max(e1, e2);
+                float a = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(d * 26f));
+
+                // 翅脉：淡淡的放射条纹
+                float vein = 0.80f + 0.20f * Mathf.Abs(Mathf.Sin(Mathf.Atan2(v, u) * 9f));
+                byte c = (byte)Mathf.Clamp(Mathf.RoundToInt(vein * 255f), 0, 255);
+
+                px[y * size + x] = new Color32(c, c, c, (byte)Mathf.Clamp(Mathf.RoundToInt(a * 255f), 0, 255));
+            }
+        }
+
+        tex.SetPixels32(px);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        tex.filterMode = FilterMode.Bilinear;
+        tex.Apply();
+        return tex;
+    }
+
+    // ========================================================= Material 构建
+    private static void SetCutout(Material m, float cutoff)
+    {
+        m.SetFloat("_Mode", 1f);
+        m.SetInt("_SrcBlend", (int)BlendMode.One);
+        m.SetInt("_DstBlend", (int)BlendMode.Zero);
+        m.SetInt("_ZWrite", 1);
+        m.DisableKeyword("_ALPHATEST_ON");
+        m.EnableKeyword("_ALPHATEST_ON");
+        m.DisableKeyword("_ALPHABLEND_ON");
+        m.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+        m.renderQueue = (int)RenderQueue.AlphaTest;
+        if (m.HasProperty("_Cutoff")) m.SetFloat("_Cutoff", cutoff);
+    }
+
+    private static void SetFade(Material m, float alpha)
+    {
+        m.SetFloat("_Mode", 2f);
+        m.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
+        m.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
+        m.SetInt("_ZWrite", 0);
+        m.DisableKeyword("_ALPHATEST_ON");
+        m.EnableKeyword("_ALPHABLEND_ON");
+        m.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+        m.renderQueue = (int)RenderQueue.Transparent;
+        var c = m.color;
+        c.a = alpha;
+        m.color = c;
+    }
+
+    private static Material MakeLit(string name, Color color, float metallic, float smoothness, Color emission)
+    {
+        Shader sh = StandardShader;
+        var m = new Material(sh) { name = name };
+        m.SetColor("_Color", color);
+        if (m.HasProperty("_Metallic")) m.SetFloat("_Metallic", metallic);
+        if (m.HasProperty("_Glossiness")) m.SetFloat("_Glossiness", smoothness);
+        if (emission.maxColorComponent > 0f)
+        {
+            if (m.HasProperty("_EmissionColor"))
+            {
+                m.EnableKeyword("_EMISSION");
+                m.SetColor("_EmissionColor", emission);
+                m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
+            }
+        }
+        SaveAsset(m, MatDir + "/" + name + ".mat");
+        return m;
+    }
+
+    /// <summary>与 MakeLit 相同，但带一张程序化贴图（用于地面/小径这类大面积表面）。</summary>
+    private static Material MakeLitTex(string name, Texture2D tex, Color color,
+                                       float metallic, float smoothness, Color emission)
+    {
+        Shader sh = StandardShader;
+        var m = new Material(sh) { name = name };
+        if (tex != null) m.SetTexture("_MainTex", tex);
+        m.SetColor("_Color", color);
+        if (m.HasProperty("_Metallic")) m.SetFloat("_Metallic", metallic);
+        if (m.HasProperty("_Glossiness")) m.SetFloat("_Glossiness", smoothness);
+        if (emission.maxColorComponent > 0f && m.HasProperty("_EmissionColor"))
+        {
+            m.EnableKeyword("_EMISSION");
+            m.SetColor("_EmissionColor", emission);
+            m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
+        }
+        SaveAsset(m, MatDir + "/" + name + ".mat");
+        return m;
+    }
+
+    /// <summary>
+    /// 可无缝平铺的斑驳贴图。做法：把像素坐标映射成三角波（镜像折叠），
+    /// 使左右/上下边缘取值相同 —— 无需 4D 噪声也能平铺不留缝。
+    /// </summary>
+    private static Texture2D BuildMottleTexture(int size, int seed, Color colA, Color colB,
+                                                Color speck, float speckThreshold, float speckScale)
+    {
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, true);
+        var px = new Color32[size * size];
+        float off = seed * 37.13f;
+
+        for (int y = 0; y < size; y++)
+        {
+            float fy = 1f - Mathf.Abs(2f * y / (size - 1f) - 1f);
+            for (int x = 0; x < size; x++)
+            {
+                float fx = 1f - Mathf.Abs(2f * x / (size - 1f) - 1f);
+
+                float n = Mathf.PerlinNoise(fx * 3.0f + off, fy * 3.0f + off) * 0.55f
+                        + Mathf.PerlinNoise(fx * 7.0f + off, fy * 7.0f + off) * 0.30f
+                        + Mathf.PerlinNoise(fx * 17.0f + off, fy * 17.0f + off) * 0.15f;
+                Color c = Color.Lerp(colA, colB, Mathf.Clamp01(n));
+
+                float sp = Mathf.PerlinNoise(fx * speckScale + off * 3f, fy * speckScale + off * 3f);
+                if (sp > speckThreshold)
+                {
+                    float w = Mathf.InverseLerp(speckThreshold, 1f, sp);
+                    c = Color.Lerp(c, speck, Mathf.Clamp01(w * 0.85f));
+                }
+
+                px[y * size + x] = c;
+            }
+        }
+
+        tex.SetPixels32(px);
+        tex.wrapMode = TextureWrapMode.Repeat;
+        tex.filterMode = FilterMode.Bilinear;
+        tex.Apply();
+        return tex;
+    }
+
+    private static Material MakeAdditive(string name, Color tint, Texture2D tex)
+    {
+        Shader sh = AdditiveShader;
+        var m = new Material(sh) { name = name };
+        if (m.HasProperty("_MainTex")) m.SetTexture("_MainTex", tex);
+        if (m.HasProperty("_TintColor")) m.SetColor("_TintColor", tint);
+        if (m.HasProperty("_Color")) m.SetColor("_Color", tint);
+        m.renderQueue = (int)RenderQueue.Transparent;
+        SaveAsset(m, MatDir + "/" + name + ".mat");
+        return m;
+    }
+
+    /// <summary>花瓣用 alpha 混合（加法在亮天空上会被冲淡、看不见）。</summary>
+    private static Shader PetalShader
+    {
+        get { return FindShader("Legacy Shaders/Particles/Alpha Blended", "Sprites/Default", "Unlit/Transparent"); }
+    }
+
+    private static Material MakePetalSprite(string name, Color tint, Texture2D tex)
+    {
+        Shader sh = PetalShader;
+        var m = new Material(sh) { name = name };
+        if (m.HasProperty("_MainTex")) m.SetTexture("_MainTex", tex);
+        if (m.HasProperty("_TintColor")) m.SetColor("_TintColor", tint);
+        if (m.HasProperty("_Color")) m.SetColor("_Color", tint);
+        m.renderQueue = (int)RenderQueue.Transparent;
+        SaveAsset(m, MatDir + "/" + name + ".mat");
+        return m;
+    }
+
+    /// <summary>程序化花瓣贴图：上窄下宽的水滴形、边缘柔化。颜色留给粒子系统去染。</summary>
+    private static Texture2D BuildPetalSprite(int size)
+    {
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, true);
+        var px = new Color32[size * size];
+        for (int y = 0; y < size; y++)
+        {
+            float v = (y + 0.5f) / size;                                   // 0=下 1=上
+            float dy = (v - 0.5f) * 2f;
+            float w = Mathf.Lerp(1.0f, 0.45f, Mathf.Clamp01((v - 0.30f) / 0.70f));  // 越往上越窄
+            for (int x = 0; x < size; x++)
+            {
+                float u = (x + 0.5f) / size;
+                float dx = (u - 0.5f) * 2f;
+                float d = Mathf.Sqrt((dx * dx) / (w * w) + dy * dy);
+                float a = Mathf.Clamp01(1.18f - d * 1.55f);
+                a = a * a * (3f - 2f * a);                                  // 平滑边缘
+                px[y * size + x] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(a * 255f));
+            }
+        }
+        tex.SetPixels32(px);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        tex.filterMode = FilterMode.Bilinear;
+        tex.Apply();
+        tex.name = "NB2_PetalSprite";
+        return tex;
+    }
+
+    // ================================================================== 主入口
+    [MenuItem("NeuroBloom/一键搭建场景 v2")]
+    public static void BuildFromMenu()
+    {
+        Build(null, true);
+    }
+
+    /// <summary>
+    /// 构建整个场景。
+    /// state == null 时使用"中性偏好"的默认状态（适合静态预览 / 运行时初始画面）。
+    /// </summary>
+    private static void Build(WorldParams state, bool saveScene)
+    {
+        _rnd = new System.Random(20261019);
+
+        if (!Application.isBatchMode && saveScene)
+        {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+        }
+
+        EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+
+        // ---------------------------------------------------------- 资产准备
+        var texBlob  = BuildSoftBlobTexture(128, 2.6f);
+        var texBeam  = BuildBeamTexture(128, 256);
+        var texRipple = BuildRippleTexture(256);
+        var texWing  = BuildWingTexture(128);
+        var texGround = BuildMottleTexture(256, 3,
+                             new Color(0.19f, 0.38f, 0.16f), new Color(0.42f, 0.66f, 0.26f),
+                             new Color(0.72f, 0.78f, 0.36f), 0.70f, 26f);
+        var texPath   = BuildMottleTexture(256, 11,
+                             new Color(0.62f, 0.55f, 0.40f), new Color(0.86f, 0.79f, 0.62f),
+                             new Color(0.50f, 0.46f, 0.40f), 0.76f, 34f);
+        SaveAsset(texBlob, TexDir + "/NB2_GlowBlob.asset");
+        SaveAsset(texBeam, TexDir + "/NB2_Beam.asset");
+        SaveAsset(texRipple, TexDir + "/NB2_Ripple.asset");
+        SaveAsset(texWing, TexDir + "/NB2_Wing.asset");
+        SaveAsset(texGround, TexDir + "/NB2_Ground.asset");
+        SaveAsset(texPath, TexDir + "/NB2_Path.asset");
+
+        var texRune  = BuildRuneTexture(256);
+        var texBurst = BuildBurstTexture(256);
+        SaveAsset(texRune,  TexDir + "/NB2_Rune.asset");
+        SaveAsset(texBurst, TexDir + "/NB2_Burst.asset");
+
+        var meshGround = BuildTerrainMesh();
+        var meshPath   = BuildRibbonMesh("NB2_Path", PathX, TerrZ0, TerrZ1, 1.7f, 0.55f,
+                                         (x, z) => TerrainHeight(x, z) + 0.045f);
+        var meshStream = BuildRibbonMesh("NB2_Stream", StreamX, TerrZ0, TerrZ1, 2.7f, 0.55f,
+                                         (x, z) => WaterY);
+        var meshBlade  = BuildBladeMesh();
+        var meshFlower = BuildFlowerMesh();
+        var meshFieldFlower = BuildFieldFlowerMesh();
+        var meshWing   = BuildWingMesh();
+        SaveAsset(meshGround, MeshDir + "/NB2_Ground.asset");
+        SaveAsset(meshPath, MeshDir + "/NB2_Path.asset");
+        SaveAsset(meshStream, MeshDir + "/NB2_Stream.asset");
+        SaveAsset(meshBlade, MeshDir + "/NB2_Blade.asset");
+        SaveAsset(meshFlower, MeshDir + "/NB2_Flower.asset");
+        SaveAsset(meshFieldFlower, MeshDir + "/NB2_FieldFlower.asset");
+        SaveAsset(meshWing, MeshDir + "/NB2_Wing.asset");
+
+        // B 阶段强交互用：花瓣 + 花茎 + 小球（种子/花心共用）
+        var meshPetal = BuildPetalMesh();
+        var meshStem  = BuildStemMesh();
+        var meshBlob  = BuildBlobMesh();
+        SaveAsset(meshPetal, MeshDir + "/NB2_Petal.asset");
+        SaveAsset(meshStem,  MeshDir + "/NB2_Stem.asset");
+        SaveAsset(meshBlob,  MeshDir + "/NB2_Blob.asset");
+
+        // 材质
+        var mGround   = MakeLitTex("NB2_Ground", texGround, Color.white, 0f, 0.06f, Color.black);
+        var mPath     = MakeLitTex("NB2_Path",   texPath,   Color.white, 0f, 0.14f, Color.black);
+        var mTrunk    = MakeLit("NB2_Trunk",   new Color(0.30f, 0.24f, 0.19f), 0f, 0.10f, Color.black);
+        var mLeafLit  = MakeLit("NB2_LeafLit", new Color(0.40f, 0.72f, 0.30f), 0f, 0.16f, Color.black);
+        var mLeafDark = MakeLit("NB2_LeafDark",new Color(0.10f, 0.24f, 0.19f), 0f, 0.10f, Color.black);
+        var mBush     = MakeLit("NB2_Bush",    new Color(0.22f, 0.44f, 0.22f), 0f, 0.12f, Color.black);
+        var mRock     = MakeLit("NB2_Rock",    new Color(0.46f, 0.46f, 0.50f), 0f, 0.30f, Color.black);
+        var mHill     = MakeLit("NB2_Hill",    new Color(0.24f, 0.33f, 0.34f), 0f, 0.05f, Color.black);
+        var mCrystal  = MakeLit("NB2_Crystal", new Color(0.62f, 0.92f, 1.00f), 0.1f, 0.92f,
+                                new Color(0.30f, 1.10f, 1.30f));
+        var mMushCap  = MakeLit("NB2_MushCap", new Color(0.42f, 0.95f, 0.85f), 0f, 0.55f,
+                                new Color(0.25f, 1.20f, 1.00f));
+        var mMushStem = MakeLit("NB2_MushStem",new Color(0.86f, 0.90f, 0.88f), 0f, 0.30f, Color.black);
+        var mBird     = MakeLit("NB2_Bird",    new Color(0.24f, 0.26f, 0.34f), 0f, 0.35f, Color.black);
+        var mGrassBlade = MakeLit("NB2_Blade", new Color(0.42f, 0.72f, 0.28f), 0f, 0.08f, Color.black);
+        var mStem     = MakeLit("NB2_Stem",    new Color(0.28f, 0.52f, 0.24f), 0f, 0.10f, Color.black);
+        var mSeed     = MakeLit("NB2_Seed",     new Color(0.44f, 0.33f, 0.22f), 0f, 0.22f, Color.black);
+        var mPetalCore= MakeLit("NB2_PetalCore",new Color(1.00f, 0.88f, 0.46f), 0f, 0.42f,
+                                new Color(1.00f, 0.80f, 0.30f) * 0.55f);
+
+        var mGlowWarm  = MakeAdditive("NB2_GlowWarm",  new Color(1.00f, 0.86f, 0.48f, 0.85f), texBlob);
+        var mGlowCyan  = MakeAdditive("NB2_GlowCyan",  new Color(0.45f, 0.95f, 1.00f, 0.85f), texBlob);
+        var mGlowViolet= MakeAdditive("NB2_GlowViolet",new Color(0.72f, 0.55f, 1.00f, 0.80f), texBlob);
+        var mBeam      = MakeAdditive("NB2_Beam",      new Color(1.00f, 0.92f, 0.66f, 0.06f), texBeam);
+        var mRune      = MakeAdditive("NB2_Rune",      new Color(0.45f, 0.80f, 1.00f, 0.20f), texRune);
+        var mBurst     = MakeAdditive("NB2_Burst",     new Color(0.78f, 1.00f, 0.96f, 0.55f), texBurst);
+
+        // 引导文字牌的材质（梦幻花体：极光渐变 + 柔光外发光；亮部给到 HDR 由场景 Bloom 接管）
+        Shader guideShader = FindShader("NeuroBloom/GuideTitle", "Sprites/Default", "Unlit/Transparent");
+        var mGuide = new Material(guideShader) { name = "NB2_GuideTitle" };
+        if (mGuide.HasProperty("_Wipe"))
+        {
+            mGuide.SetColor("_GlowColor",    new Color(1.15f, 0.98f, 1.55f, 1.00f));
+            mGuide.SetFloat("_GlowStrength", 0.85f);   // 压到后期泛光门限(1.10)以下：字不再"晕开"，只留一点点光边
+            mGuide.SetFloat("_GlowRadius",   1.5f);   // 紧光晕半径（屏幕像素）；大了就糊
+            mGuide.SetFloat("_GlowWide",     0.10f);   // 远处那圈"雾气"的强度（原来 0.22 太散，字被雾包住像糊了）
+            mGuide.SetFloat("_Breathe",      0.07f);   // 整体极缓慢的明暗起伏
+            mGuide.SetFloat("_Drift",        0.035f);  // 极光颜色漂移幅度
+            mGuide.SetFloat("_CharCount",    11f);   // 每行 11 个字（"点一下地面，种下一束光"）
+            mGuide.SetFloat("_LineCount",    2f);    // 两行
+            mGuide.SetFloat("_Stagger",      0.05f);   // 逐字延迟 0.05 秒
+            mGuide.SetFloat("_PopSeconds",   0.55f);   // 每个字弹入用 0.55 秒
+            mGuide.SetFloat("_PopOvershoot", 0.42f);   // 0=不弹；0.42≈轻微弹性
+            mGuide.SetFloat("_BodyAlpha",    0.56f);   // 笔画核心更实一点：明亮背景上也要一眼看清（原 0.46 太透）
+            mGuide.SetFloat("_BodyGain",     0.95f);   // 关键：颜色×不透明度 <=1，否则会被截断回死白=白挡一块
+            mGuide.SetFloat("_InkLo",        0.15f);   // 笔画削细：低于此覆盖→完全透明
+            mGuide.SetFloat("_InkHi",        0.50f);   // 笔画削细：高于此覆盖→完全不透明
+            mGuide.SetFloat("_Shimmer",      0.55f);   // 极光波强度
+            mGuide.SetColor("_ColTop",       new Color(1.00f, 0.97f, 0.92f, 1f));  // 奶白
+            mGuide.SetColor("_ColGold",      new Color(1.00f, 0.88f, 0.58f, 1f));  // 淡金
+            mGuide.SetColor("_ColPink",      new Color(1.00f, 0.72f, 0.86f, 1f));  // 樱粉
+            mGuide.SetColor("_ColMint",      new Color(0.64f, 0.95f, 0.80f, 1f));  // 薄荷绿
+            mGuide.SetColor("_ColViolet",    new Color(0.78f, 0.68f, 1.00f, 1f));  // 薰衣草紫
+        }
+        else
+        {
+            Debug.LogWarning("[NeuroBloomV2] 没找到 NeuroBloom/GuideTitle 着色器，引导文字退回普通材质");
+        }
+        SaveAsset(mGuide, MatDir + "/NB2_GuideTitle.mat");
+
+        // 水面（半透明）
+        var mWater = new Material(StandardShader) { name = "NB2_Water" };
+        mWater.SetColor("_Color", new Color(0.30f, 0.68f, 0.72f, 0.66f));
+        if (mWater.HasProperty("_Metallic")) mWater.SetFloat("_Metallic", 0.15f);
+        if (mWater.HasProperty("_Glossiness")) mWater.SetFloat("_Glossiness", 0.94f);
+        if (mWater.HasProperty("_MainTex")) mWater.SetTexture("_MainTex", texRipple);
+        SetFade(mWater, 0.66f);
+        SaveAsset(mWater, MatDir + "/NB2_Water.mat");
+
+        // 翅膀（镂空）
+        var mWingDark = new Material(StandardShader) { name = "NB2_WingDark" };
+        mWingDark.SetColor("_Color", new Color(0.20f, 0.22f, 0.30f));
+        if (mWingDark.HasProperty("_Glossiness")) mWingDark.SetFloat("_Glossiness", 0.25f);
+        mWingDark.SetTexture("_MainTex", texWing);
+        SetCutout(mWingDark, 0.5f);
+        SaveAsset(mWingDark, MatDir + "/NB2_WingDark.mat");
+
+        string[] butterflyNames = { "WingPink", "WingGold", "WingSky", "WingViolet", "WingMint" };
+        Color[] butterflyCols =
+        {
+            new Color(1.00f, 0.58f, 0.78f),
+            new Color(1.00f, 0.82f, 0.34f),
+            new Color(0.52f, 0.82f, 1.00f),
+            new Color(0.76f, 0.58f, 1.00f),
+            new Color(0.55f, 1.00f, 0.78f)
+        };
+        var mWings = new Material[butterflyCols.Length];
+        for (int i = 0; i < butterflyCols.Length; i++)
+        {
+            var m = new Material(StandardShader) { name = "NB2_" + butterflyNames[i] };
+            m.SetColor("_Color", butterflyCols[i]);
+            if (m.HasProperty("_Glossiness")) m.SetFloat("_Glossiness", 0.35f);
+            if (m.HasProperty("_EmissionColor"))
+            {
+                m.EnableKeyword("_EMISSION");
+                m.SetColor("_EmissionColor", butterflyCols[i] * 0.35f);
+                m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
+            }
+            m.SetTexture("_MainTex", texWing);
+            SetCutout(m, 0.5f);
+            SaveAsset(m, MatDir + "/NB2_" + butterflyNames[i] + ".mat");
+            mWings[i] = m;
+        }
+
+        // 花心色板（花海用它铺色）
+        string[] flowerNames = { "FlowerCoral", "FlowerGold", "FlowerViolet", "FlowerSky", "FlowerPink", "FlowerMint" };
+        Color[] flowerCols =
+        {
+            new Color(1.00f, 0.52f, 0.42f),
+            new Color(1.00f, 0.84f, 0.36f),
+            new Color(0.72f, 0.56f, 1.00f),
+            new Color(0.50f, 0.78f, 1.00f),
+            new Color(1.00f, 0.62f, 0.82f),
+            new Color(0.58f, 1.00f, 0.74f)
+        };
+        var mFlowers = new Material[flowerCols.Length];
+        for (int i = 0; i < flowerCols.Length; i++)
+        {
+            mFlowers[i] = MakeLit("NB2_" + flowerNames[i], flowerCols[i], 0f, 0.22f,
+                                  flowerCols[i] * 0.22f);
+        }
+
+        // ---------------------------------------------------------------- 天空
+        Material skyMat = null;
+        Shader skyShader = FindShader("Skybox/Procedural");
+        if (skyShader != null)
+        {
+            skyMat = new Material(skyShader) { name = "NB2_Sky" };
+            skyMat.SetColor("_SkyTint", new Color(0.62f, 0.78f, 0.94f));
+            skyMat.SetColor("_GroundColor", new Color(0.86f, 0.82f, 0.72f));
+            skyMat.SetFloat("_AtmosphereThickness", 0.85f);
+            skyMat.SetFloat("_Exposure", 0.85f);
+            if (skyMat.HasProperty("_SunSize")) skyMat.SetFloat("_SunSize", 0.028f);
+            if (skyMat.HasProperty("_SunSizeConvergence")) skyMat.SetFloat("_SunSizeConvergence", 4f);
+            if (skyMat.HasProperty("_SunDisk")) skyMat.SetFloat("_SunDisk", 2f);
+            SaveAsset(skyMat, MatDir + "/NB2_Sky.mat");
+            RenderSettings.skybox = skyMat;
+        }
+
+        RenderSettings.ambientMode = AmbientMode.Flat;
+        RenderSettings.ambientIntensity = 1.0f;
+        RenderSettings.fogMode = FogMode.ExponentialSquared;
+
+        // -------------------------------------------------------------- 世界根
+        var camGo = new GameObject("Main Camera");
+        camGo.tag = "MainCamera";
+        var cam = camGo.AddComponent<Camera>();
+        cam.clearFlags = CameraClearFlags.Skybox;
+        cam.fieldOfView = 58f;
+        cam.nearClipPlane = 0.12f;
+        cam.farClipPlane = 320f;
+        cam.allowHDR = true;
+        camGo.transform.position = new Vector3(CamX, CamY, CamZ);
+        camGo.transform.rotation = Quaternion.Euler(8f, 0f, 0f);
+        var postFx = camGo.AddComponent<NeuroPostFX>();
+        // ---- 观感参数集中在此处，出图与实机共用（字段随场景序列化）----
+        postFx.threshold           = 1.10f;
+        postFx.softKnee            = 0.55f;
+        postFx.bloomIntensity      = 0.70f;
+        postFx.exposure            = 1.12f;
+        postFx.tonemapKnee         = 0.80f;
+        postFx.saturation          = 1.38f;
+        postFx.contrast            = 1.08f;
+        postFx.vignette            = 0.30f;
+        postFx.chromaticAberration = 0.80f;
+
+        var sunGo = New("Sun", null);
+        sunGo.transform.rotation = Quaternion.Euler(SunEuler);
+        var sun = sunGo.AddComponent<Light>();
+        sun.type = LightType.Directional;
+        sun.color = SunCalm;
+        sun.intensity = 0.8f;
+        sun.shadows = LightShadows.Soft;
+        sun.shadowStrength = 0.62f;
+        sun.shadowBias = 0.05f;
+        sun.shadowNormalBias = 0.45f;
+        sun.shadowResolution = LightShadowResolution.High;
+
+        var fillGo = New("FillLight", null);
+        fillGo.transform.rotation = Quaternion.Euler(-18f, 150f, 0f);
+        var fill = fillGo.AddComponent<Light>();
+        fill.type = LightType.Directional;
+        fill.color = new Color(0.62f, 0.74f, 1.00f);
+        fill.intensity = 0.18f;
+        fill.shadows = LightShadows.None;
+
+        // ---------------------------------------------------------------- 地面
+        var groundGo = New("Ground", null);
+        var groundMf = groundGo.AddComponent<MeshFilter>();
+        groundMf.sharedMesh = meshGround;
+        var groundMr = groundGo.AddComponent<MeshRenderer>();
+        groundMr.sharedMaterial = mGround;
+        groundMr.shadowCastingMode = ShadowCastingMode.Off;
+        groundMr.receiveShadows = true;
+        // 「点击播种」需要鼠标射线能打到地面：给地形挂 MeshCollider
+        // （73×73 = 5329 顶点 / 10368 三角，一次性构建，成本可接受）
+        var groundCol = groundGo.AddComponent<MeshCollider>();
+        groundCol.sharedMesh = meshGround;
+
+        // 小径
+        var pathGo = New("Path", null);
+        var pathMf = pathGo.AddComponent<MeshFilter>();
+        pathMf.sharedMesh = meshPath;
+        var pathMr = pathGo.AddComponent<MeshRenderer>();
+        pathMr.sharedMaterial = mPath;
+        pathMr.shadowCastingMode = ShadowCastingMode.Off;
+        pathMr.receiveShadows = true;
+
+        // 溪流
+        var streamGo = New("Stream", null);
+        var streamMf = streamGo.AddComponent<MeshFilter>();
+        streamMf.sharedMesh = meshStream;
+        var streamMr = streamGo.AddComponent<MeshRenderer>();
+        streamMr.sharedMaterial = mWater;
+        streamMr.shadowCastingMode = ShadowCastingMode.Off;
+        streamMr.receiveShadows = false;
+        streamGo.AddComponent<NeuroWaterFlow>();
+
+        // 远景丘陵（挡住地形边缘，制造层次）
+        var hillsGo = New("Hills", null);
+        for (int i = 0; i < 11; i++)
+        {
+            float hx = R(-80f, 80f);
+            float hz = R(36f, 72f);
+            float hr = R(16f, 30f);
+            Prim(PrimitiveType.Sphere, "Hill_" + i, hillsGo.transform,
+                 new Vector3(hx, -hr * R(0.42f, 0.60f), hz),
+                 new Vector3(0f, R(0f, 360f), 0f),
+                 new Vector3(hr, hr * R(0.42f, 0.62f), hr * R(0.8f, 1.2f)),
+                 mHill);
+        }
+
+        // ------------------------------------------------------------ 树与灌木
+        var treesGo = New("Trees", null);
+        var darkGo = New("DarkForest", null);
+        var bushGo = New("Bushes", null);
+        var rockGo = New("Rocks", null);
+
+        // 明亮区：稀疏乔木，叶色鲜绿
+        for (int i = 0; i < 15; i++)
+        {
+            float x, z;
+            int guard = 0;
+            do
+            {
+                x = R(-24f, 24f);
+                z = R(-18f, 4.5f);
+                guard++;
+            } while ((Mathf.Abs(x - PathX(z)) < 3.0f || Mathf.Abs(x - StreamX(z)) < 2.6f) && guard < 60);
+
+            MakeTree(treesGo.transform, "Tree_" + i, x, z, R(4.2f, 7.5f), mTrunk, mLeafLit, 3, 3.0f, true);
+        }
+
+        // 昏暗区：密林，撑起树冠天顶，投下真实阴影
+        for (int i = 0; i < 62; i++)
+        {
+            float x, z;
+            int guard = 0;
+            do
+            {
+                x = R(-28f, 28f);
+                z = R(6.0f, 28f);
+                guard++;
+            } while ((Mathf.Abs(x - PathX(z)) < 3.2f || Mathf.Abs(x - StreamX(z)) < 2.8f) && guard < 80);
+
+            MakeTree(darkGo.transform, "Dark_" + i, x, z, R(7.5f, 12.5f), mTrunk, mLeafDark, 3, 4.6f, false);
+        }
+
+        // 灌木与岩石
+        for (int i = 0; i < 46; i++)
+        {
+            float x = R(-26f, 26f);
+            float z = R(-19f, 26f);
+            if (Mathf.Abs(x - PathX(z)) < 1.35f) continue;
+            if (Mathf.Abs(x - StreamX(z)) < 2.0f) continue;
+            float y = TerrainHeight(x, z);
+            float s = R(0.5f, 1.5f);
+            var b = Prim(PrimitiveType.Sphere, "Bush_" + i, bushGo.transform,
+                         new Vector3(x, y + s * 0.35f, z),
+                         new Vector3(0f, R(0f, 360f), 0f),
+                         new Vector3(s, s * R(0.55f, 0.80f), s * R(0.85f, 1.15f)),
+                         mBush);
+            b.GetComponent<MeshRenderer>().shadowCastingMode = ShadowCastingMode.On;
+        }
+
+        for (int i = 0; i < 28; i++)
+        {
+            float x = R(-26f, 26f);
+            float z = R(-19f, 26f);
+            if (Mathf.Abs(x - PathX(z)) < 1.2f) continue;
+            float y = TerrainHeight(x, z);
+            float s = R(0.35f, 1.15f);
+            Prim(PrimitiveType.Sphere, "Rock_" + i, rockGo.transform,
+                 new Vector3(x, y + s * 0.25f, z),
+                 new Vector3(R(0f, 360f), R(0f, 360f), R(0f, 360f)),
+                 new Vector3(s * R(0.8f, 1.4f), s * R(0.5f, 0.9f), s * R(0.8f, 1.3f)),
+                 mRock);
+        }
+
+        // ------------------------------------------- 草海 / 花海（合并静态网格）
+        // 不用 ParticleSystem 的原因：① 粒子状态不随场景序列化，场景重开后草花会整片消失；
+        // ② Mesh 模式粒子的批次上限会卡住密度。合并成静态网格 = 每套 1 个 draw call、
+        // 永久存在、能正常投影与接收阴影（代价：没有风摆，用地面斑驳贴图补足质感）。
+        var grassGo = New("GrassField", null);
+        {
+            const float spread = 0.46f;      // 每丛草叶的散开半径
+            var gm1 = MakeLit("NB2_Grass_A", new Color(0.46f, 0.76f, 0.30f), 0f, 0.08f, Color.black);
+            var gm2 = MakeLit("NB2_Grass_B", new Color(0.31f, 0.60f, 0.25f), 0f, 0.08f, Color.black);
+            var xfA = new List<Matrix4x4>();
+            var xfB = new List<Matrix4x4>();
+            AddGrassTufts(xfA, 470, spread);
+            AddGrassTufts(xfB, 390, spread);
+            MakeMergedMesh("NB2_GrassMesh_A", grassGo.transform, meshBlade, gm1, xfA, false, true);
+            MakeMergedMesh("NB2_GrassMesh_B", grassGo.transform, meshBlade, gm2, xfB, false, true);
+        }
+
+        // 花：6 色，共 720 朵
+        var flowerFieldGo = New("FlowerField", null);
+        for (int f = 0; f < mFlowers.Length; f++)
+        {
+            var xf = new List<Matrix4x4>();
+            for (int i = 0; i < 120; i++)
+            {
+                float x, z;
+                int guard = 0;
+                do
+                {
+                    z = R(-19f, 26f);
+                    x = PathX(z) + R(-16f, 16f);
+                    guard++;
+                } while ((Mathf.Abs(x - PathX(z)) < 1.15f ||
+                          Mathf.Abs(x - StreamX(z)) < 1.90f) && guard < 90);
+
+                float s = R(0.80f, 1.70f);
+                xf.Add(Matrix4x4.TRS(new Vector3(x, TerrainHeight(x, z) - 0.02f, z),
+                                     Quaternion.Euler(R(-8f, 8f), R(0f, 360f), R(-8f, 8f)),
+                                     new Vector3(s, s * R(0.85f, 1.30f), s)));
+            }
+            MakeMergedMesh("NB2_FlowerField_" + f, flowerFieldGo.transform, meshFieldFlower,
+                           mFlowers[f], xf, false, true);
+        }
+
+        // ------------------------------------------------ 昏暗区：自发光蘑菇
+        var mushGo = New("Mushrooms", null);
+        // 用户反馈"很多奇怪的发光球体"→ 从 42 个减到 16 个，并整体缩小（球帽更小更含蓄）
+        for (int i = 0; i < 16; i++)
+        {
+            float x, z;
+            int guard = 0;
+            do
+            {
+                x = R(-24f, 24f);
+                z = R(6.5f, 27f);
+                guard++;
+            } while ((Mathf.Abs(x - PathX(z)) < 2.4f || Mathf.Abs(x - StreamX(z)) < 2.2f) && guard < 80);
+
+            float y = TerrainHeight(x, z);
+            float h = R(0.32f, 0.85f);
+            float capR = h * R(0.45f, 0.70f);
+
+            Prim(PrimitiveType.Cylinder, "MushStem_" + i, mushGo.transform,
+                 new Vector3(x, y + h * 0.5f, z), Vector3.zero,
+                 new Vector3(capR * 0.22f, h * 0.5f, capR * 0.22f), mMushStem);
+
+            Prim(PrimitiveType.Sphere, "MushCap_" + i, mushGo.transform,
+                 new Vector3(x, y + h, z), new Vector3(R(0f, 360f), 0f, 0f),
+                 new Vector3(capR * 2f, capR * 0.90f, capR * 2f), mMushCap);
+        }
+
+        // 蓝紫点光：给昏暗区添一点神秘感
+        for (int i = 0; i < 4; i++)
+        {
+            float z = R(9f, 24f);
+            float x = PathX(z) + R(-7f, 7f);
+            var pg = New("GlowPoint_" + i, null);
+            pg.transform.position = new Vector3(x, TerrainHeight(x, z) + R(1.0f, 2.2f), z);
+            var pl = pg.AddComponent<Light>();
+            pl.type = LightType.Point;
+            pl.range = R(7f, 12f);
+            pl.intensity = R(0.5f, 1.1f);
+            pl.color = Color.Lerp(new Color(0.45f, 0.80f, 1.00f), new Color(0.78f, 0.55f, 1.00f),
+                                  (float)_rnd.NextDouble());
+            pl.shadows = LightShadows.None;
+        }
+
+        // ------------------------------------------------------------ 水晶簇
+        var flowerTargets = new List<Transform>();
+        var crystalTargets = new List<Transform>();
+
+        // 主角花（围绕水晶）：单个 GameObject 保存为 Transform，受 bloom 控制缩放
+        int heroIdx = 0;
+        string[] heroGroups = { "Flowers_Inner", "Flowers_Mid", "Flowers_Outer" };
+        float[] heroRadius = { 2.6f, 5.4f, 9.0f };
+        int[] heroCount = { 18, 26, 30 };
+
+        for (int gi = 0; gi < 3; gi++)
+        {
+            var grp = New(heroGroups[gi], null);
+            for (int i = 0; i < heroCount[gi]; i++)
+            {
+                float a = (i / (float)heroCount[gi]) * Mathf.PI * 2f + R(-0.12f, 0.12f);
+                float rr = heroRadius[gi] * R(0.85f, 1.15f);
+                float z = 2.2f + Mathf.Sin(a) * rr;
+                float x = PathX(z) + Mathf.Cos(a) * rr * 0.75f;
+                float y = TerrainHeight(x, z);
+                if (Mathf.Abs(x - StreamX(z)) < 1.9f) continue;
+
+                var root = New("Flower_" + gi + "_" + heroIdx, grp.transform);
+                root.transform.position = new Vector3(x, y, z);
+
+                float stemH = R(0.42f, 0.95f);
+                Prim(PrimitiveType.Cylinder, "Stem", root.transform,
+                     new Vector3(0f, stemH * 0.5f, 0f), Vector3.zero,
+                     new Vector3(0.032f, stemH * 0.5f, 0.032f),
+                     mStem);
+
+                var head = New("Head", root.transform);
+                head.transform.localPosition = new Vector3(0f, stemH, 0f);
+                head.transform.localEulerAngles = new Vector3(R(-14f, 14f), R(0f, 360f), R(-10f, 10f));
+                head.transform.localScale = Vector3.one * R(0.75f, 1.35f);
+                var hmf = head.AddComponent<MeshFilter>();
+                hmf.sharedMesh = meshFlower;
+                var hmr = head.AddComponent<MeshRenderer>();
+                hmr.sharedMaterial = mFlowers[RI(0, mFlowers.Length)];
+
+                flowerTargets.Add(root.transform);
+                heroIdx++;
+            }
+        }
+
+        // 主水晶
+        var crystalRoot = New("CrystalCluster", null);
+        {
+            float cx = PathX(2.2f) + 0.6f;
+            float cz = 2.2f;
+            float cy = TerrainHeight(cx, cz);
+            crystalRoot.transform.position = new Vector3(cx, cy, cz);
+
+            for (int i = 0; i < 9; i++)
+            {
+                float a = i / 9f * Mathf.PI * 2f;
+                float rr = i == 0 ? 0f : R(0.35f, 1.05f);
+                float hh = i == 0 ? 3.6f : R(1.2f, 2.6f);
+                float w = i == 0 ? 0.52f : R(0.20f, 0.40f);
+                Prim(PrimitiveType.Cube, "Prism_" + i, crystalRoot.transform,
+                     new Vector3(Mathf.Cos(a) * rr, hh * 0.5f - 0.1f, Mathf.Sin(a) * rr),
+                     new Vector3(R(-7f, 7f), R(0f, 360f), R(-7f, 7f)),
+                     new Vector3(w, hh * 0.5f, w * R(0.7f, 1.0f)),
+                     mCrystal);
+            }
+            crystalTargets.Add(crystalRoot.transform);
+        }
+
+        // 3 处小水晶
+        for (int i = 0; i < 3; i++)
+        {
+            float z = R(-8f, 14f);
+            float x = PathX(z) + R(-6f, 6f);
+            if (Mathf.Abs(x - StreamX(z)) < 2.2f) continue;
+            var c = New("CrystalSmall_" + i, null);
+            c.transform.position = new Vector3(x, TerrainHeight(x, z), z);
+            for (int k = 0; k < 4; k++)
+            {
+                float hh = R(0.55f, 1.5f);
+                Prim(PrimitiveType.Cube, "P" + k, c.transform,
+                     new Vector3(R(-0.35f, 0.35f), hh * 0.5f, R(-0.35f, 0.35f)),
+                     new Vector3(R(-14f, 14f), R(0f, 360f), R(-14f, 14f)),
+                     new Vector3(R(0.10f, 0.20f), hh * 0.5f, R(0.09f, 0.18f)),
+                     mCrystal);
+            }
+            crystalTargets.Add(c.transform);
+        }
+
+        // 水晶辉光
+        var crystalLightGo = New("CrystalLight", null);
+        crystalLightGo.transform.position = crystalRoot.transform.position + new Vector3(0f, 1.8f, 0f);
+        var crystalLight = crystalLightGo.AddComponent<Light>();
+        crystalLight.type = LightType.Point;
+        crystalLight.range = 16f;
+        crystalLight.color = new Color(0.55f, 0.95f, 1.00f);
+        crystalLight.intensity = 1.6f;
+        crystalLight.shadows = LightShadows.Soft;
+
+        // -------------------------------------------- B 阶段：光纹环 + 绽放脉冲
+        // 两枚竖直朝向相机的 Quad，加法混合；只用程序化贴图，不需要外部素材。
+        // 故意【不】挂在 CrystalCluster 下 —— 否则会被水晶的缩放连带放大。
+        Vector3 runeCenter = crystalRoot.transform.position + new Vector3(0f, 1.35f, 0f);
+
+        var runeGo = Prim(PrimitiveType.Quad, "RuneRing", null, runeCenter,
+                          Vector3.zero, new Vector3(2.2f, 2.2f, 1f), mRune);
+        var runeMr = runeGo.GetComponent<MeshRenderer>();
+        runeMr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        runeMr.receiveShadows = false;
+
+        var burstGo = Prim(PrimitiveType.Quad, "BurstRing", null, runeCenter,
+                           Vector3.zero, new Vector3(0.8f, 0.8f, 1f), mBurst);
+        var burstMr = burstGo.GetComponent<MeshRenderer>();
+        burstMr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        burstMr.receiveShadows = false;
+        burstMr.enabled = false;
+
+        // ------------------------------------------------------------ 丁达尔光束
+        var beamGo = New("Beams", null);
+        Vector3 sunDir = Quaternion.Euler(SunEuler) * Vector3.forward;
+        Quaternion beamRot = Quaternion.FromToRotation(Vector3.up, -sunDir);
+        for (int i = 0; i < 8; i++)
+        {
+            float z = R(-6f, 22f);
+            float x = PathX(z) + R(-11f, 11f);
+            float len = R(11f, 19f);
+            float wdt = R(0.7f, 1.7f);
+            Vector3 ground = new Vector3(x, TerrainHeight(x, z), z);
+            var shaft = New("Beam_" + i, beamGo.transform);
+            shaft.transform.position = ground + (-sunDir) * (len * 0.5f);
+            shaft.transform.rotation = beamRot;
+
+            for (int k = 0; k < 2; k++)
+            {
+                var q = Prim(PrimitiveType.Quad, "Quad_" + k, shaft.transform,
+                             Vector3.zero, new Vector3(0f, k * 90f, 0f),
+                             new Vector3(wdt, len, 1f), mBeam);
+                var mr = q.GetComponent<MeshRenderer>();
+                mr.shadowCastingMode = ShadowCastingMode.Off;
+                mr.receiveShadows = false;
+            }
+        }
+
+        // -------------------------------------------------------------- 浮尘/萤火虫
+        var fogGo = New("Fog", null);
+        var fogPs = MakeDriftParticles("Dust", fogGo.transform, mGlowWarm, 6.0f, 0.06f, 0.16f, -10f, 26f, 0.6f, 3.2f);
+        var flyGo = New("Fireflies", null);
+        MakeDriftParticles("FireflyCyan", flyGo.transform, mGlowCyan, 3.0f, 0.10f, 0.24f, 6f, 28f, 0.5f, 3.4f);
+        MakeDriftParticles("FireflyViolet", flyGo.transform, mGlowViolet, 3.0f, 0.10f, 0.24f, 7f, 28f, 0.5f, 3.2f);
+
+        // ------------------------------------------------------------ 小鸟/蝴蝶
+        var crittersGo = New("Critters", null);
+        for (int i = 0; i < 12; i++)
+        {
+            float z = R(-4f, 18f);
+            var root = New("Bird_" + i, crittersGo.transform);
+            var body = Prim(PrimitiveType.Sphere, "Body", root.transform,
+                            Vector3.zero, Vector3.zero,
+                            new Vector3(0.20f, 0.17f, 0.46f), mBird);
+            body.GetComponent<MeshRenderer>().shadowCastingMode = ShadowCastingMode.Off;
+            Prim(PrimitiveType.Sphere, "Head", root.transform,
+                 new Vector3(0f, 0.06f, 0.26f), Vector3.zero,
+                 new Vector3(0.15f, 0.15f, 0.15f), mBird);
+            Prim(PrimitiveType.Cube, "Beak", root.transform,
+                 new Vector3(0f, 0.05f, 0.38f), Vector3.zero,
+                 new Vector3(0.05f, 0.04f, 0.10f), mMushStem);
+
+            var wl = New("WingL", root.transform);
+            wl.transform.localPosition = new Vector3(-0.06f, 0.05f, 0f);
+            var wlq = New("Quad", wl.transform);
+            wlq.transform.localPosition = Vector3.zero;
+            wlq.transform.localScale = new Vector3(-0.62f, 1f, 0.30f);
+            wlq.AddComponent<MeshFilter>().sharedMesh = meshWing;
+            wlq.AddComponent<MeshRenderer>().sharedMaterial = mWingDark;
+
+            var wr = New("WingR", root.transform);
+            wr.transform.localPosition = new Vector3(0.06f, 0.05f, 0f);
+            var wrq = New("Quad", wr.transform);
+            wrq.transform.localPosition = Vector3.zero;
+            wrq.transform.localScale = new Vector3(0.62f, 1f, 0.30f);
+            wrq.AddComponent<MeshFilter>().sharedMesh = meshWing;
+            wrq.AddComponent<MeshRenderer>().sharedMaterial = mWingDark;
+
+            var cr = root.AddComponent<NeuroCritters>();
+            cr.mode = NeuroCritters.Mode.Bird;
+            cr.center = new Vector3(PathX(z), TerrainHeight(0f, z), z);
+            cr.radius = R(9f, 20f);
+            cr.height = R(6.5f, 11.5f);
+            cr.speed = R(0.20f, 0.40f);
+            cr.phase = R(0f, 6.28f);
+            cr.wobble = R(0.4f, 1.3f);
+            cr.ellipseZ = R(0.55f, 0.85f);
+            cr.flapSpeed = R(5.5f, 9.0f);
+            cr.flapAmount = R(34f, 52f);
+            cr.wingL = wl.transform;
+            cr.wingR = wr.transform;
+        }
+
+        for (int i = 0; i < 16; i++)
+        {
+            float x = R(-16f, 16f);
+            float z = R(-14f, 20f);
+            var root = New("Butterfly_" + i, crittersGo.transform);
+            Prim(PrimitiveType.Sphere, "Body", root.transform,
+                 Vector3.zero, new Vector3(90f, 0f, 0f),
+                 new Vector3(0.035f, 0.16f, 0.035f), mBird);
+
+            var wl = New("WingL", root.transform);
+            wl.transform.localPosition = new Vector3(-0.01f, 0.02f, 0f);
+            var wlq = New("Quad", wl.transform);
+            wlq.transform.localScale = new Vector3(-0.34f, 1f, 0.34f);
+            wlq.AddComponent<MeshFilter>().sharedMesh = meshWing;
+            wlq.AddComponent<MeshRenderer>().sharedMaterial = mWings[i % mWings.Length];
+
+            var wr = New("WingR", root.transform);
+            wr.transform.localPosition = new Vector3(0.01f, 0.02f, 0f);
+            var wrq = New("Quad", wr.transform);
+            wrq.transform.localScale = new Vector3(0.34f, 1f, 0.34f);
+            wrq.AddComponent<MeshFilter>().sharedMesh = meshWing;
+            wrq.AddComponent<MeshRenderer>().sharedMaterial = mWings[i % mWings.Length];
+
+            var cr = root.AddComponent<NeuroCritters>();
+            cr.mode = NeuroCritters.Mode.Butterfly;
+            cr.center = new Vector3(x, TerrainHeight(x, z), z);
+            cr.radius = R(1.4f, 3.4f);
+            cr.height = R(0.7f, 2.2f);
+            cr.speed = R(0.55f, 1.15f);
+            cr.phase = R(0f, 6.28f);
+            cr.wobble = R(0.25f, 0.7f);
+            cr.ellipseZ = R(0.45f, 0.75f);
+            cr.flapSpeed = R(11f, 17f);
+            cr.flapAmount = R(48f, 68f);
+            cr.wingL = wl.transform;
+            cr.wingR = wr.transform;
+        }
+
+        // ------------------------------------------------------------ 环境音/向导
+        var ambientGo = New("Ambient", null);
+        var ambientSrc = ambientGo.AddComponent<AudioSource>();
+        ambientSrc.loop = true;
+        ambientSrc.playOnAwake = false;
+        ambientSrc.spatialBlend = 0f;
+        ambientSrc.volume = 0.35f;
+
+        var voiceGo = New("Voice", null);
+        var voiceSrc = voiceGo.AddComponent<AudioSource>();
+        voiceSrc.loop = false;
+        voiceSrc.playOnAwake = false;
+        voiceSrc.spatialBlend = 0f;
+        voiceSrc.volume = 0.9f;
+
+        // 引导文字
+        var guideGo = New("GuideText", null);
+        // 用户的反馈：字太大、太板正、挡住画面 -> 缩小、抬到画面上方、轻微倾斜（手写感）
+        // 位置：相机上方 0.58 米、再远一点（远了在画面里就小），落在画面上部约 1/4 处
+        guideGo.transform.position = new Vector3(CamX, CamY + 0.58f, CamZ + 5.6f);
+        // 和相机同一个俯角（8°），再给 -3° 的侧倾：不是一条水平直线，像手写上去的
+        // 注意：千万别用 180° 去"正对相机"，那会把字左右写反（照镜子一样）
+        guideGo.transform.rotation = Quaternion.Euler(8f, 0f, -3f);
+        var tm = guideGo.AddComponent<TextMesh>();
+        if (guideGo.GetComponent<MeshRenderer>() == null) guideGo.AddComponent<MeshRenderer>();
+        Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        if (font == null) font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+        if (font != null) tm.font = font;
+        tm.fontSize = 160;   // 必须 >= 文字在屏幕上的实际像素高度，否则图集被放大 -> 发糊（原 64）
+        tm.characterSize = 0.048f;   // 原 0.085f 太大；想再小就继续调这个数
+        tm.anchor = TextAnchor.MiddleCenter;
+        tm.alignment = TextAlignment.Center;
+        tm.color = new Color(0.96f, 0.98f, 1.00f, 0.95f);
+        tm.text = "点一下地面，种下一束光\n慢慢呼吸，花会跟着你开";
+        var guideMr = guideGo.GetComponent<MeshRenderer>();
+        if (guideMr != null && mGuide != null) guideMr.sharedMaterial = mGuide;  // 必须赶在挂组件之前，组件要认这个材质
+        guideGo.AddComponent<NeuroGuideTitle>();
+        guideGo.AddComponent<GuideTextUpdater>();
+
+        // ------------------------------------------------------------ 文字处飘落的花瓣
+        // 30 片粉色半透明花瓣从文字那一行慢慢往下飘，带自转和左右摆动。
+        // 两个坑：① 编辑器（非 Play）里粒子不会自己跑 -> 必须手动 Simulate 推进；
+        //        ② 手动推进若不关掉随机种子，四张出图的花瓣位置会各不相同 -> 关掉并固定种子。
+        var texPetalSpr = BuildPetalSprite(64);
+        SaveAsset(texPetalSpr, TexDir + "/NB2_PetalSprite.asset");
+        var mPetalSpr = MakePetalSprite("NB2_PetalSprite", new Color(1.00f, 0.78f, 0.90f, 0.40f), texPetalSpr);
+
+        var petalGo = New("GuidePetals", null);
+        petalGo.transform.position = new Vector3(CamX, CamY + 0.58f, CamZ + 4.4f);  // 比文字更近相机 = 飘在字前面
+        var ps = petalGo.AddComponent<ParticleSystem>();
+        var psMain = ps.main;
+        psMain.loop = true;
+        psMain.startLifetime = 7.5f;
+        psMain.startSpeed = 0f;
+        psMain.startSize = new ParticleSystem.MinMaxCurve(0.10f, 0.22f);
+        psMain.startRotation = new ParticleSystem.MinMaxCurve(0f, 6.2831853f);
+        psMain.gravityModifier = 0.012f;                 // 很轻的重力：慢慢飘，不是掉
+        psMain.maxParticles = 30;
+        psMain.simulationSpace = ParticleSystemSimulationSpace.World;
+        psMain.startColor = new ParticleSystem.MinMaxGradient(
+            new Color(1.00f, 0.80f, 0.92f, 0.40f), new Color(0.88f, 0.82f, 1.00f, 0.28f));
+        ps.useAutoRandomSeed = false;                   // 固定随机种子 -> 四张出图花瓣位置一致，能互相比较
+        ps.randomSeed = 20261020u;
+        var psEm = ps.emission;
+        psEm.rateOverTime = 4.0f;                        // 4/秒 × 7.5 秒寿命 ≈ 常驻 30 片
+        var psShape = ps.shape;
+        psShape.enabled = true;
+        psShape.shapeType = ParticleSystemShapeType.Box;
+        psShape.scale = new Vector3(3.4f, 0.30f, 0.50f);  // 从文字这一条横线上撒下来
+        var psVel = ps.velocityOverLifetime;
+        psVel.enabled = true;
+        psVel.space = ParticleSystemSimulationSpace.World;
+        psVel.x = new ParticleSystem.MinMaxCurve(-0.18f, 0.18f);
+        psVel.y = new ParticleSystem.MinMaxCurve(-0.45f, -0.22f);
+        psVel.z = new ParticleSystem.MinMaxCurve(0f, 0f);   // 必须给：三条曲线模式不一致会每帧报错
+        var psRot = ps.rotationOverLifetime;
+        psRot.enabled = true;
+        psRot.z = new ParticleSystem.MinMaxCurve(-0.7f, 0.7f);
+        var psNoise = ps.noise;
+        psNoise.enabled = true;                          // 左右摆动
+        psNoise.strength = new ParticleSystem.MinMaxCurve(0.55f);
+        psNoise.frequency = 0.28f;
+        psNoise.scrollSpeed = 0.12f;
+        var psRen = petalGo.GetComponent<ParticleSystemRenderer>();
+        if (psRen != null)
+        {
+            psRen.sharedMaterial = mPetalSpr;
+            psRen.renderMode = ParticleSystemRenderMode.Billboard;
+        }
+        ps.Simulate(5.5f, true, true);                   // 出图用：推进到"已经飘起来"的稳定样子
+
+        // ------------------------------------------------------------ 夜景：星空 + 月亮
+        // 星星铺在一个大球的内壁上，月亮是一块朝向相机的 Quad。
+        // 两者都用 NeuroBloom/Sky（加法、**不带雾**）—— 普通材质放在 60~120 单位外会被雾吃干净。
+        Shader skyGlowShader = FindShader("NeuroBloom/Sky", "Sprites/Default");
+        var nightSkyGo = New("NightSky", null);
+
+        var texStars = BuildStarTexture(1024, 1100, 20261021);
+        SaveAsset(texStars, TexDir + "/NB2_Stars.asset");
+        var mStars = new Material(skyGlowShader) { name = "NB2_Stars" };
+        mStars.SetTexture("_MainTex", texStars);
+        mStars.mainTextureScale = new Vector2(4f, 2f);        // 平铺 4×2，星点才够细
+        mStars.SetColor("_Tint", new Color(0.92f, 0.96f, 1.00f, 1f));
+        mStars.SetFloat("_Alpha", 0f);
+        SaveAsset(mStars, MatDir + "/NB2_Stars.mat");
+
+        var starsGo = Prim(PrimitiveType.Sphere, "Stars", nightSkyGo.transform,
+                           camGo.transform.position, Vector3.zero, Vector3.one * 120f, mStars);
+        var starsMr = starsGo.GetComponent<MeshRenderer>();
+        starsMr.shadowCastingMode = ShadowCastingMode.Off;
+        starsMr.receiveShadows = false;
+
+        var texMoon = BuildMoonTexture(256);
+        SaveAsset(texMoon, TexDir + "/NB2_Moon.asset");
+        var mMoon = new Material(skyGlowShader) { name = "NB2_Moon" };
+        mMoon.SetTexture("_MainTex", texMoon);
+        mMoon.SetColor("_Tint", new Color(0.90f, 0.95f, 1.00f, 1f));
+        mMoon.SetFloat("_Alpha", 0f);
+        SaveAsset(mMoon, MatDir + "/NB2_Moon.mat");
+
+        var moonGo = Prim(PrimitiveType.Quad, "Moon", nightSkyGo.transform,
+                          new Vector3(14f, 30f, 62f), Vector3.zero, Vector3.one * 7f, mMoon);
+        moonGo.transform.localRotation = Quaternion.LookRotation(
+            camGo.transform.position - moonGo.transform.localPosition);   // 正面朝相机
+        var moonMr = moonGo.GetComponent<MeshRenderer>();
+        moonMr.shadowCastingMode = ShadowCastingMode.Off;
+        moonMr.receiveShadows = false;
+
+        // ------------------------------------------------------------ 世界管理器
+        var mgrGo = New("NeuroBloomManager", null);
+        var bridge = mgrGo.AddComponent<BrainBridge>();
+        var world = mgrGo.AddComponent<NeuroWorldController>();
+        world.bridge = bridge;
+        world.flowers = flowerTargets.ToArray();
+        world.crystals = crystalTargets.ToArray();
+        world.sunLight = sun;
+        world.crystalLight = crystalLight;
+        world.fog = fogPs;
+        world.ambient = ambientSrc;
+        world.voice = voiceSrc;
+        world.skyMaterial = skyMat;
+
+        // ------------------------------------------------------------ 天气系统
+        // 晴天 / 雾霾 / 黑天；默认 2.6 秒平滑过渡；演示时键盘 1/2/3 切换。
+        // 注意：它只做"叠加"，基底永远来自 NeuroWorldController（四键契约不受影响）。
+        var weather = mgrGo.AddComponent<NeuroWeather>();
+        weather.world = world;
+        weather.sun = sun;
+        weather.fill = fill;
+        weather.skyMaterial = skyMat;
+        weather.fireflies = flyGo.transform;
+        weather.critters = crittersGo.transform;
+        weather.nightSky = nightSkyGo.transform;
+        weather.starsMaterial = mStars;
+        weather.moonMaterial = mMoon;
+        weather.current = NeuroWeather.WeatherType.Sunny;
+
+        // -------------------------------------------- B 阶段交互：光纹汇聚 → 绽放
+        var chimeGo = New("Chime", null);
+        var chimeSrc = chimeGo.AddComponent<AudioSource>();
+        chimeSrc.loop = false;
+        chimeSrc.playOnAwake = false;
+        chimeSrc.spatialBlend = 0f;
+        chimeSrc.volume = 0.7f;
+
+        var interact = mgrGo.AddComponent<NeuroInteraction>();
+        interact.world = world;
+        interact.runeRing = runeMr;
+        interact.burstRing = burstMr;
+        interact.chime = chimeSrc;
+        interact.enabledInScene = true;
+        interact.previewMode = false;
+
+        // ------------------------------------ B 阶段强交互：手控播种 → 脑控开花
+        // 鼠标点地面落一颗种子（手控、即时），放松度高于个人基线则发芽抽茎开花（脑控、慢）。
+        var gardenGo = New("GardenRoot", null);
+        var garden = mgrGo.AddComponent<NeuroGarden>();
+        garden.world = world;
+        garden.cam = cam;
+        garden.gardenRoot = gardenGo.transform;
+        garden.petalMesh = meshPetal;
+        garden.stemMesh = meshStem;
+        garden.blobMesh = meshBlob;
+        garden.stemMat = mStem;
+        garden.seedMat = mSeed;
+        garden.coreMat = mPetalCore;
+        garden.petalMats = mFlowers;
+        garden.waterY = WaterY;
+        garden.previewMode = false;                  // 存盘的场景里绝不留预览植株
+        garden.previewSpots = BuildGardenPreviewSpots();
+
+        // 字牌（GuideText）自己也会兜底查找，但显式接上更清楚：
+        //   world  = 话术从哪来（NeuroWorldController.currentScript）
+        //   garden = 用来看"用户种下第一株没有"（种了才把字牌交给大模型）
+        // 注意 GuideText 是在上面 1700 多行建的，比这里早，所以只能建完再回填。
+        var guideUpdater = UnityEngine.Object.FindFirstObjectByType<GuideTextUpdater>();
+        if (guideUpdater != null)
+        {
+            guideUpdater.world = world;
+            guideUpdater.garden = garden;
+        }
+
+        // -------------------------------------------------- 应用脑状态（可选）
+        WorldParams p = state ?? new WorldParams
+        {
+            bloom = 0.66f,
+            sunlight = 0.745f,
+            fog = 0.34f,
+            crystal = 0.65f
+        };
+        ApplyState(p, sun, crystalLight, skyMat, flowerTargets, crystalTargets);
+
+        AssetDatabase.SaveAssets();
+        if (saveScene)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(ScenePath));
+            EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+            EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene(), ScenePath);
+            AssetDatabase.Refresh();
+            Debug.Log("[NeuroBloomV2] 场景已生成：" + ScenePath
+                      + "（花 " + flowerTargets.Count + " 株 / 水晶 " + crystalTargets.Count + " 处）");
+        }
+    }
+
+    // ================================================ 把 world_params 写进场景
+    private static void ApplyState(WorldParams p, Light sun, Light crystalLight, Material skyMat,
+                                   List<Transform> flowers, List<Transform> crystals)
+    {
+        float s = Mathf.Clamp01(p.sunlight);
+        float bloom = Mathf.Clamp01(p.bloom);
+        float fog = Mathf.Clamp01(p.fog);
+        float crystal = Mathf.Clamp01(p.crystal);
+
+        if (sun != null)
+        {
+            sun.intensity = 0.20f + 0.90f * s;
+            sun.color = Color.Lerp(SunStorm, SunCalm, s);
+        }
+
+        RenderSettings.ambientLight = Color.Lerp(new Color(0.16f, 0.18f, 0.24f),
+                                                 new Color(0.42f, 0.46f, 0.52f), s);
+        RenderSettings.ambientIntensity = 0.42f + 0.22f * s;
+
+        RenderSettings.fog = fog > 0.02f;
+        RenderSettings.fogMode = FogMode.ExponentialSquared;
+        RenderSettings.fogDensity = 0.006f + 0.055f * fog;
+        RenderSettings.fogColor = Color.Lerp(FogCalm, FogStorm, Mathf.Clamp01(fog));
+
+        if (skyMat != null)
+        {
+            if (skyMat.HasProperty("_SkyTint"))
+                skyMat.SetColor("_SkyTint", Color.Lerp(SkyTopCalm, SkyTopStorm, fog));
+            if (skyMat.HasProperty("_GroundColor"))
+                skyMat.SetColor("_GroundColor", Color.Lerp(SkyHorizonCalm, SkyHorizonStorm, fog));
+            if (skyMat.HasProperty("_AtmosphereThickness"))
+                skyMat.SetFloat("_AtmosphereThickness", Mathf.Lerp(0.85f, 2.2f, fog));
+            if (skyMat.HasProperty("_Exposure"))
+                skyMat.SetFloat("_Exposure", Mathf.Lerp(0.85f, 0.42f, fog));
+        }
+
+        if (crystalLight != null)
+        {
+            crystalLight.intensity = 0.4f + 3.0f * crystal;
+            crystalLight.color = Color.Lerp(new Color(0.35f, 0.85f, 1f),
+                                            new Color(0.6f, 1f, 0.9f), crystal);
+        }
+
+        ApplyScale(flowers, Mathf.Lerp(0.25f, 1.0f, bloom));
+        ApplyScale(crystals, Mathf.Lerp(0.25f, 1.0f, crystal));
+    }
+
+    private static void ApplyScale(List<Transform> list, float s)
+    {
+        if (list == null) return;
+        for (int i = 0; i < list.Count; i++)
+        {
+            if (list[i] != null) list[i].localScale = Vector3.one * s;
+        }
+    }
+
+    // ================================================================== 造树
+    private static void MakeTree(Transform parent, string name, float x, float z,
+                                 float trunkH, Material trunkMat, Material leafMat,
+                                 int canopyCount, float canopyR, bool bright)
+    {
+        var root = New(name, parent);
+        float y = TerrainHeight(x, z);
+        root.transform.position = new Vector3(x, y, z);
+
+        float r = R(0.16f, 0.34f);
+        Prim(PrimitiveType.Cylinder, "Trunk", root.transform,
+             new Vector3(0f, trunkH * 0.5f, 0f), new Vector3(R(-3f, 3f), R(0f, 360f), R(-3f, 3f)),
+             new Vector3(r, trunkH * 0.5f, r), trunkMat);
+
+        for (int i = 0; i < canopyCount; i++)
+        {
+            float cr = canopyR * R(0.62f, 1.10f);
+            Vector3 off = new Vector3(R(-canopyR * 0.55f, canopyR * 0.55f),
+                                      trunkH * R(0.72f, 1.06f) + (i == 0 ? 0f : R(-0.3f, 1.1f)),
+                                      R(-canopyR * 0.55f, canopyR * 0.55f));
+            var c = Prim(PrimitiveType.Sphere, "Canopy_" + i, root.transform,
+                         off, new Vector3(0f, R(0f, 360f), 0f),
+                         new Vector3(cr, cr * R(0.50f, 0.78f), cr), leafMat);
+            c.GetComponent<MeshRenderer>().shadowCastingMode = ShadowCastingMode.On;
+        }
+
+        if (bright)
+        {
+            // 明亮区的树顶加一小簇暖色高光叶，制造"阳光穿过"的感觉
+            float cr = canopyR * 0.55f;
+            Prim(PrimitiveType.Sphere, "CanopyTop", root.transform,
+                 new Vector3(R(-0.6f, 0.6f), trunkH * 1.02f, R(-0.6f, 0.6f)),
+                 Vector3.zero, new Vector3(cr, cr * 0.6f, cr), leafMat);
+        }
+    }
+
+    // ==================================================== 合并静态网格（草海/花海）
+    /// <summary>把同一个源网格按一批变换合并成单个静态网格：1 个 draw call，随场景序列化。</summary>
+    private static GameObject MakeMergedMesh(string name, Transform parent, Mesh src, Material mat,
+                                             List<Matrix4x4> xf, bool castShadow, bool receiveShadows)
+    {
+        var sv = src.vertices;
+        var sn = src.normals;
+        var suv = src.uv;
+        var st = src.triangles;
+
+        int n = xf.Count;
+        var verts = new List<Vector3>(sv.Length * n);
+        var norms = new List<Vector3>(sv.Length * n);
+        var uvs = new List<Vector2>(suv.Length * n);
+        var tris = new List<int>(st.Length * n);
+
+        for (int k = 0; k < n; k++)
+        {
+            Matrix4x4 m = xf[k];
+            Matrix4x4 nm = m.inverse.transpose;      // 非均匀缩放下的法线变换
+            int baseIdx = verts.Count;
+            for (int i = 0; i < sv.Length; i++)
+            {
+                verts.Add(m.MultiplyPoint3x4(sv[i]));
+                norms.Add(nm.MultiplyVector(sn[i]).normalized);
+                uvs.Add(suv[i]);
+            }
+            for (int i = 0; i < st.Length; i++) tris.Add(baseIdx + st[i]);
+        }
+
+        var mesh = new Mesh { name = name };
+        if (verts.Count > 65000) mesh.indexFormat = IndexFormat.UInt32;
+        mesh.SetVertices(verts);
+        mesh.SetNormals(norms);
+        mesh.SetUVs(0, uvs);
+        mesh.SetTriangles(tris, 0);
+        mesh.RecalculateBounds();
+        SaveAsset(mesh, MeshDir + "/" + name + ".asset");
+
+        var go = New(name, parent);
+        go.transform.position = Vector3.zero;
+        go.AddComponent<MeshFilter>().sharedMesh = mesh;
+        var mr = go.AddComponent<MeshRenderer>();
+        mr.sharedMaterial = mat;
+        mr.shadowCastingMode = castShadow ? ShadowCastingMode.On : ShadowCastingMode.Off;
+        mr.receiveShadows = receiveShadows;
+        return go;
+    }
+
+    /// <summary>撒草：每丛 5 片叶子，随机朝向、随机缩放、轻微前后倾。</summary>
+    private static void AddGrassTufts(List<Matrix4x4> dst, int tufts, float spread)
+    {
+        for (int t = 0; t < tufts; t++)
+        {
+            float cx, cz;
+            int guard = 0;
+            do
+            {
+                cx = R(-27f, 27f);
+                cz = R(-19f, 28f);
+                guard++;
+            } while ((Mathf.Abs(cx - PathX(cz)) < 1.05f ||
+                      Mathf.Abs(cx - StreamX(cz)) < 1.90f) && guard < 80);
+
+            float cy = TerrainHeight(cx, cz) - 0.03f;
+            for (int b = 0; b < 5; b++)
+            {
+                var pos = new Vector3(cx + R(-spread, spread), cy, cz + R(-spread, spread));
+                var rot = Quaternion.Euler(R(-10f, 10f), R(0f, 360f), R(-10f, 10f));
+                float s = R(0.70f, 1.45f);
+                dst.Add(Matrix4x4.TRS(pos, rot, new Vector3(s, s * R(0.80f, 1.30f), s)));
+            }
+        }
+    }
+
+    // ==================================================== 漂浮粒子（浮尘 / 萤火虫）
+    /// <summary>
+    /// 常驻漂浮粒子：looping + prewarm，全部是"声明式"发射。
+    /// 与草海不同，这类粒子不依赖手工 Emit —— 发射速率、形状、生命周期都在组件里，
+    /// 会随场景序列化，所以重开场景后依然存在。</summary>
+    private static ParticleSystem MakeDriftParticles(string name, Transform parent, Material mat,
+                                                     float rate, float sizeMin, float sizeMax,
+                                                     float zFrom, float zTo,
+                                                     float yFrom, float yTo)
+    {
+        var go = New(name, parent);
+
+        var ps = go.AddComponent<ParticleSystem>();
+        ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+
+        // 发射盒覆盖整条可活动走廊；组件 Transform 就放在盒心
+        float zc = (zFrom + zTo) * 0.5f;
+        float xc = PathX(zc);
+        float yc = TerrainHeight(xc, zc) + (yFrom + yTo) * 0.5f;
+        go.transform.position = new Vector3(xc, yc, zc);
+
+        var main = ps.main;
+        main.loop = true;
+        main.playOnAwake = true;
+        main.prewarm = true;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(25f, 50f);
+        main.startSpeed = 0f;
+        main.startSize = new ParticleSystem.MinMaxCurve(sizeMin, sizeMax);
+        main.startRotation3D = false;
+        main.gravityModifier = 0f;
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        main.maxParticles = 900;
+
+        var em = ps.emission;
+        em.enabled = true;
+        em.rateOverTime = rate;
+
+        var sh = ps.shape;
+        sh.enabled = true;
+        sh.shapeType = ParticleSystemShapeType.Box;
+        sh.scale = new Vector3(34f, (yTo - yFrom) + 1.5f, Mathf.Abs(zTo - zFrom));
+
+        // 极慢的随机漂移
+        var vel = ps.velocityOverLifetime;
+        vel.enabled = true;
+        vel.space = ParticleSystemSimulationSpace.World;
+        vel.x = new ParticleSystem.MinMaxCurve(-0.05f, 0.05f);
+        vel.y = new ParticleSystem.MinMaxCurve(0.01f, 0.05f);
+        vel.z = new ParticleSystem.MinMaxCurve(-0.04f, 0.04f);
+
+        // 淡入 → 稳定 → 淡出
+        var col = ps.colorOverLifetime;
+        col.enabled = true;
+        var grad = new Gradient();
+        grad.SetKeys(
+            new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
+            new[]
+            {
+                new GradientAlphaKey(0f, 0f),
+                new GradientAlphaKey(1f, 0.25f),
+                new GradientAlphaKey(0.9f, 0.6f),
+                new GradientAlphaKey(0f, 1f)
+            });
+        col.color = new ParticleSystem.MinMaxGradient(grad);
+
+        var pr = go.GetComponent<ParticleSystemRenderer>();
+        pr.renderMode = ParticleSystemRenderMode.Billboard;
+        pr.sharedMaterial = mat;
+        pr.shadowCastingMode = ShadowCastingMode.Off;
+        pr.receiveShadows = false;
+
+        ps.Simulate(45f, true, false);
+        ps.Play();
+        return ps;
+    }
+
+    // ==================================================== 四态对比出图（验收回路）
+    /// <summary>出图目录：<项目根>/render_states/（放在 Assets 外面，避免 Unity 反复导入）</summary>
+    private static string OutDir
+    {
+        get { return Path.GetFullPath(Path.Combine(Application.dataPath, "../render_states")); }
+    }
+
+    /// <summary>按前端统一映射，把 relax 展开成一组完整的 world_params（仅供出图预览用）。</summary>
+    private static WorldParams StateFromRelax(float relax)
+    {
+        relax = Mathf.Clamp01(relax);
+        return new WorldParams
+        {
+            sunlight = Mathf.Clamp01(0.25f + 0.75f * relax),
+            fog      = Mathf.Clamp01(1f - relax),
+            bloom    = Mathf.Clamp01(relax),
+            crystal  = Mathf.Clamp01((relax - 0.4f) / 0.4f)
+        };
+    }
+
+    /// <summary>
+    /// 依次渲染「放松 / 中性 / 紧张 / 极度紧张」四张图，最后恢复中性偏好状态并把场景存盘。
+    /// 这是 A 阶段唯一的验收回路 —— 不看图就没法判断"空灵/绚烂"是否达标。
+    /// </summary>
+    [MenuItem("NeuroBloom/渲染天气对比图")]
+    public static void RenderWeatherStates()
+    {
+        string[] labels = { "13_weather_sunny", "14_weather_hazy", "15_weather_night" };
+        var types = new NeuroWeather.WeatherType[]
+        {
+            NeuroWeather.WeatherType.Sunny,
+            NeuroWeather.WeatherType.Hazy,
+            NeuroWeather.WeatherType.Night
+        };
+
+        // 只建一次场景：三张图布局完全一致，差异只来自天气本身。
+        // （原来在循环里 Build，每次都会重新随机布局，三张图没法对比。）
+        Build(StateFromRelax(0.66f), false);
+        var w = UnityEngine.Object.FindFirstObjectByType<NeuroWeather>();
+        if (w == null) { Debug.LogError("[NeuroBloomV2] 场景里没有 NeuroWeather，天气出图中止"); return; }
+        for (int i = 0; i < types.Length; i++)
+        {
+            w.SetWeatherImmediate(types[i]);
+            RenderTo(labels[i] + ".png");
+        }
+
+        Build(null, true);      // 收尾：回到中性偏好状态并保存场景
+        Debug.Log("[NeuroBloomV2] 天气对比图完成 → " + OutDir);
+    }
+
+    [MenuItem("NeuroBloom/渲染四态对比图")]
+    public static void RenderFourStates()
+    {
+        float[] relaxes = { 1.00f, 0.66f, 0.33f, 0.05f };
+        string[] labels = { "1_relaxed", "2_neutral", "3_tense", "4_very_tense" };
+
+        for (int i = 0; i < relaxes.Length; i++)
+        {
+            Build(StateFromRelax(relaxes[i]), false);
+            RenderTo(labels[i] + ".png");
+        }
+
+        Build(null, true);   // 收尾：回到中性偏好状态，并把场景保存到 ScenePath
+        Debug.Log("[NeuroBloomV2] 四态出图完成 → " + OutDir);
+    }
+
+    /// <summary>
+    /// B 阶段验收回路：把「光纹环」的四个蓄能档位各出一张图。
+    /// 编辑模式下没有大脑信号，所以走 NeuroInteraction 的手动预览通道；
+    /// 每次 Build 都会重建对象，必须重新 Find 一次再设预览值。
+    /// </summary>
+    [MenuItem("NeuroBloom/渲染蓄能对比图")]
+    public static void RenderChargeStates()
+    {
+        float[] charges = { 0.00f, 0.50f, 1.00f };
+        string[] labels = { "5_rune_00", "6_rune_50", "7_rune_100" };
+
+        for (int i = 0; i < charges.Length; i++)
+        {
+            Build(null, false);
+            var ni = UnityEngine.Object.FindFirstObjectByType<NeuroInteraction>();
+            if (ni != null)
+            {
+                ni.previewMode = true;
+                ni.previewCharge = charges[i];
+                ni.previewBurst = 0f;
+                ni.ApplyVisual();
+            }
+            RenderTo(labels[i] + ".png");
+        }
+
+        // 绽放瞬间：脉冲环最大、光纹环最亮
+        Build(null, false);
+        var nb = UnityEngine.Object.FindFirstObjectByType<NeuroInteraction>();
+        if (nb != null)
+        {
+            nb.previewMode = true;
+            nb.previewCharge = 0.35f;
+            nb.previewBurst = 0.85f;
+            nb.ApplyVisual();
+        }
+        RenderTo("8_rune_burst.png");
+
+        Build(null, true);   // 收尾：预览关闭、回到中性偏好状态并保存场景
+        Debug.Log("[NeuroBloomV2] 蓄能对比图完成 → " + OutDir);
+    }
+
+    /// <summary>
+    /// 出图预览用的播种点：沿小径两侧、相机正前方的近景铺开，
+    /// 保证种子/花苞/盛开三种大小在 1280×720 里都看得清、量得出。
+    /// 这里用固定偏移（不用 _rnd），保证每次 Build 位置完全一致、出图可对比。
+    /// </summary>
+    private static Vector3[] BuildGardenPreviewSpots()
+    {
+        float[] zs   = { -2.4f, 0.6f, 3.4f, 6.2f, 8.8f };
+        float[] offs = {  2.0f, -2.4f, 2.6f, -2.1f, 2.3f };
+
+        var list = new List<Vector3>();
+        for (int i = 0; i < zs.Length; i++)
+        {
+            float z = zs[i];
+            float x = PathX(z) + offs[i];
+            if (Mathf.Abs(x - StreamX(z)) < 1.8f) x += offs[i] * 0.9f;   // 别种到溪里
+            x = Mathf.Clamp(x, TerrX0 + 2f, TerrX1 - 2f);
+            list.Add(new Vector3(x, TerrainHeight(x, z), z));
+        }
+        return list.ToArray();
+    }
+
+    /// <summary>
+    /// B 阶段强交互验收回路：把「刚播下 → 抽茎 → 花苞 → 盛开」四个生长档位各出一张图。
+    /// 编辑模式下没法用鼠标点地面，所以走 NeuroGarden 的 previewSpots 预设位置通道；
+    /// 每次 Build 都会重建对象，必须重新 Find 一次再设预览值。
+    /// 对照组 = 2_neutral.png（同一台相机、同一套世界参数，只是没有花）。
+    /// </summary>
+    [MenuItem("NeuroBloom/渲染播种开花对比图")]
+    public static void RenderGardenStates()
+    {
+        float[] growths = { 0.02f, 0.42f, 0.72f, 1.00f };
+        string[] labels = { "9_garden_seed", "10_garden_sprout", "11_garden_bud", "12_garden_bloom" };
+
+        for (int i = 0; i < growths.Length; i++)
+        {
+            // 四张图必须只差"生长档位"：一片花瓣的位置/朝向/大小都要一模一样。
+            // 否则每次 Random 抖动 ±20%，档位之间没法比。
+            UnityEngine.Random.InitState(20261020);
+            Build(null, false);
+            var g = UnityEngine.Object.FindFirstObjectByType<NeuroGarden>();
+            if (g != null)
+            {
+                g.previewMode = true;
+                g.previewGrowth = growths[i];
+                g.ApplyPreview();
+                LogGardenDiagnostics(g, growths[i]);
+            }
+            RenderTo(labels[i] + ".png");
+        }
+
+        Build(null, true);   // 收尾：预览关闭、回到中性偏好状态并保存场景
+        Debug.Log("[NeuroBloomV2] 播种开花对比图完成 → " + OutDir);
+    }
+
+    /// <summary>
+    /// 出图前把植株的真实渲染状态打到日志 —— 编辑模式下没有视觉回看，
+    /// 只靠"图变了几个像素"是查不出"网格没接上 / 材质为空"这类问题的。
+    /// </summary>
+    private static void LogGardenDiagnostics(NeuroGarden g, float growth)
+    {
+        int spots = (g.previewSpots == null) ? -1 : g.previewSpots.Length;
+        Debug.Log("[GARDEN] growth=" + growth.ToString("F2")
+                  + " spots=" + spots + " plants=" + g.PlantCount
+                  + " petalMesh=" + (g.petalMesh == null ? "NULL" : g.petalMesh.name)
+                  + " stemMesh=" + (g.stemMesh == null ? "NULL" : g.stemMesh.name)
+                  + " blobMesh=" + (g.blobMesh == null ? "NULL" : g.blobMesh.name)
+                  + " stemMat=" + (g.stemMat == null ? "NULL" : g.stemMat.name)
+                  + " petalMats=" + (g.petalMats == null ? "NULL" : g.petalMats.Length.ToString()));
+
+        Transform root = g.PlantRootAt(0);
+        if (root == null) { Debug.LogError("[GARDEN] 一株都没种下 —— previewSpots 可能是空的"); return; }
+
+        var cam = Camera.main;
+        for (int i = 0; i < 3; i++)
+        {
+            Transform r = g.PlantRootAt(i);
+            if (r == null) break;
+            string vp = (cam == null) ? "no-cam" : cam.WorldToViewportPoint(r.position + Vector3.up * 0.4f).ToString("F2");
+            Debug.Log("[GARDEN]   #" + i + " pos=" + r.position.ToString("F2") + " viewport=" + vp);
+        }
+
+        var rends = root.GetComponentsInChildren<MeshRenderer>(true);
+        Debug.Log("[GARDEN]   renderers=" + rends.Length);
+        for (int i = 0; i < rends.Length; i++)
+        {
+            var mr = rends[i];
+            var mf = mr.GetComponent<MeshFilter>();
+            string meshName = (mf == null || mf.sharedMesh == null) ? "NULL" : mf.sharedMesh.name;
+            Debug.Log("[GARDEN]     " + mr.gameObject.name
+                      + " mesh=" + meshName
+                      + " mat=" + (mr.sharedMaterial == null ? "NULL" : mr.sharedMaterial.name)
+                      + " active=" + mr.gameObject.activeInHierarchy
+                      + " size=" + mr.bounds.size.ToString("F2")
+                      + " center=" + mr.bounds.center.ToString("F2"));
+        }
+    }
+
+    /// <summary>把当前场景从 Main Camera 渲染成 1280×720 的 PNG。</summary>
+    public static void RenderTo(string fileName)
+    {
+        var cam = Camera.main;
+        if (cam == null) { Debug.LogError("[NeuroBloomV2] 找不到 Main Camera，出图中止"); return; }
+
+        const int w = 1920, h = 1080;
+        var rt = new RenderTexture(w, h, 24, RenderTextureFormat.ARGB32);
+        rt.antiAliasing = 4;
+        rt.Create();
+
+        // 出图是定格：引导文字必须已经淡入完成、且把外观写进渲染器，否则可能拍到空白或一块白板
+        var titles = UnityEngine.Object.FindObjectsByType<NeuroGuideTitle>(FindObjectsSortMode.None);
+        for (int i = 0; i < titles.Length; i++)
+        {
+            titles[i].previewWipe = 1f;
+            titles[i].Apply();
+        }
+
+        var oldTarget = cam.targetTexture;
+        cam.targetTexture = rt;
+        cam.Render();                      // 会正常触发 NeuroPostFX.OnRenderImage
+        cam.targetTexture = oldTarget;
+
+        var oldActive = RenderTexture.active;
+        RenderTexture.active = rt;
+        var tex = new Texture2D(w, h, TextureFormat.RGB24, false);
+        tex.ReadPixels(new Rect(0, 0, w, h), 0, 0);
+        tex.Apply();
+        RenderTexture.active = oldActive;
+
+        rt.Release();
+        UnityEngine.Object.DestroyImmediate(rt);
+
+        Directory.CreateDirectory(OutDir);
+        string outPath = Path.Combine(OutDir, fileName);
+        File.WriteAllBytes(outPath, tex.EncodeToPNG());
+        UnityEngine.Object.DestroyImmediate(tex);
+        Debug.Log("[NeuroBloomV2] 出图：" + outPath);
+    }
+}

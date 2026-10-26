@@ -1,0 +1,28 @@
+# 脑机与信号处理
+brainflow>=5.9
+mne>=1.7
+scipy>=1.13
+numpy>=1.26
+pylsl>=1.16
+
+# 大模型 / Agent
+openai>=1.40
+langgraph>=0.2
+langchain>=0.3
+langchain-openai>=0.2
+
+# 服务与通信
+websockets>=12.0
+fastapi>=0.115
+uvicorn>=0.30
+redis>=5.0
+psycopg[binary]>=3.2
+
+# 向量记忆
+chromadb>=0.5
+
+# MCP（2.x：FastMCP 更名 MCPServer，代码已兼容 1.x/2.x）
+mcp>=2.0
+
+# 工具
+python-dotenv>=1.0

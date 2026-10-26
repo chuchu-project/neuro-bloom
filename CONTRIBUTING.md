@@ -75,3 +75,22 @@ Co-authored-by: @队友用户名 <队友邮箱>
 - 代码与文档进仓库；构建产物、依赖、缓存、运行数据不进。
 - 新增忽略规则请改根目录 `.gitignore`，并在 PR 里说明原因。
 - 大文件（>20 MB）先议，不要直接 `git add`。
+
+## 七、新成员第一次拉代码
+
+```bash
+git clone https://github.com/chuchu-project/neuro-bloom.git
+cd neuro-bloom
+
+# 署名必须是自己的 GitHub 账号，否则贡献记录算不到你头上
+git config user.name  "你的GitHub用户名"
+git config user.email "你的数字ID+你的GitHub用户名@users.noreply.github.com"
+```
+
+数字 ID 在 `https://api.github.com/users/你的用户名` 的 `"id"` 字段里。
+也可以直接 `gh auth login` 后用 `gh api user --jq .id` 查。
+
+拉下来先跑一遍 README 的「快速开始」，确认能起再动手改；跑不起来先开 issue，
+不要在自己机器上瞎改依赖版本。
+
+没有采集板是**正常状态**：控制台会保持空态，点「演示（非脑电）」即可看完整链路。

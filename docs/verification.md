@@ -1,4 +1,6 @@
-# 最终提交：实现状态与验证结果
+# 验证结果与已知限制（Verification）
+
+> 脑境 NeuroBloom · 每条需求做到什么程度、有什么证据、还差什么
 
 > 版本 v1.0 · 2026-11-12 · 对应课程 Project-based Course 1105
 > 关联：[Proposal](proposal.md) · [PRD](prd.md) · [技术设计](tech-design.md)

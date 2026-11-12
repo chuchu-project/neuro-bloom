@@ -1,4 +1,6 @@
-# Brief Technical Design — 脑境 NeuroBloom
+# 技术设计（Technical Design）
+
+> 脑境 NeuroBloom · 结构、技术栈、数据格式与失败降级
 
 > 版本 v1.0 · 2026-11-12 · 对应课程 Project-based Course 1105
 > 关联：[PRD](prd.md) 的 FR-01–FR-07 · [验证结果](verification.md)

@@ -1,4 +1,6 @@
-# MVP Product Requirements Document — 脑境 NeuroBloom
+# 需求文档（MVP PRD）
+
+> 脑境 NeuroBloom · 功能范围、验收标准与排除项
 
 > 版本 v1.0 · 2026-11-12 · 对应课程 Project-based Course 1105
 > 上游：[Project Proposal](proposal.md) · 下游：[技术设计](tech-design.md) · [验证结果](verification.md)

@@ -1,4 +1,6 @@
-# Project Proposal — 脑境 NeuroBloom
+# 项目提案（Proposal）
+
+> 脑境 NeuroBloom · 卒中后居家康复的脑电闭环训练与随访智能体
 
 > 版本 v1.0 · 2026-11-12 · 对应课程 Project-based Course 1105
 > 关联：[MVP PRD](prd.md) · [技术设计](tech-design.md) · [验证结果](verification.md)

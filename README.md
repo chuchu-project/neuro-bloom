@@ -32,8 +32,6 @@
 | [验证结果](docs/verification.md) | 每条需求做到没有、证据是什么、还差什么 |
 | [决策记录](docs/decisions.md) | 关键选择的备选项、结论、事后怎么检查 |
 
-辅助材料：[AGENTS.md](AGENTS.md)（给 AI 助手的项目约束）。
-
 ## 现在能做什么
 
 | 能力 | 说明 |
@@ -81,7 +79,7 @@ bash start.sh                 # bridge + 采集 + 引导语；bash stop.sh 停
 | 楚景越 | [@chuchu-project](https://github.com/chuchu-project) | 软件设计与实现（采集、判定、桥接、控制台）、3D 场景与推流、技术文档 |
 | 张喻嫣 | [@chefzs929-prog](https://github.com/chefzs929-prog) | 脑电数据采集与实验（戴帽与电极布置、基线标定、实验记录、信号质量排查） |
 
-贡献以 issue / PR / commit 中的 `@username` 记录，规则见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+贡献以 issue / PR / commit 中的 `@username` 记录。
 
 ## 边界与限制
 
@@ -136,7 +134,6 @@ agent_service（引导语，可选）──────────────�
 | [设备清单](docs/neurobloom-equipment-list.md) | 演示与演示外两套配置 |
 | [训练会话报告](docs/neurobloom-session-report.md) | 报告怎么生成、怎么讲 |
 | [验证方案](docs/验证方案.md) | 三层验证协议与结论口径 |
-| [对标分析](docs/neurobloom-benchmark.md) | 与同类方案的差距与补齐路径 |
 | [复制路径](docs/neurobloom-replication-path.md) | 换一台机器怎么搭起来 |
 
 ## 说明

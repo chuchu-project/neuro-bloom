@@ -19,7 +19,13 @@ public class NeuroUI : MonoBehaviour
     private enum Mode { Shell, Immersive }
 
     private Page _page = Page.Home;
-    private Mode _mode = Mode.Shell;
+    private Mode _mode = Mode.Immersive;
+
+    // 启动保护：成品以全屏启动时，macOS 在全屏切换/聚焦那一下会补发 Esc，
+    // Unity 的 OnGUI 还可能把同一次按键投递两帧（实测 4.9s 和 8.3s 各一次）。
+    // 不挡就是「一打开自己掉进控制台」，用户会以为程序坏了。
+    private float _bootTime;
+    private float _lastEscAt = -10f;
 
     private static readonly Color BG     = new Color(0.043f, 0.055f, 0.075f, 0.995f);
     private static readonly Color CARD   = new Color(0.086f, 0.106f, 0.137f, 0.62f);
@@ -51,6 +57,8 @@ public class NeuroUI : MonoBehaviour
 
     private void Start()
     {
+        _bootTime = Time.unscaledTime;
+        _mode = Mode.Immersive;          // 打开就是 3D，不继承任何残留状态
         _readyAt = Time.unscaledTime + 10f;
         _solid = Solid();
         _disc = DiscTex(128, 64);
@@ -70,6 +78,47 @@ public class NeuroUI : MonoBehaviour
         st = new GUIStyle { font = _font, alignment = a, wordWrap = false, clipping = TextClipping.Clip };
         st.normal.textColor = c;
         st.fontSize = Mathf.Max(8, ipx);
+        _styles[k] = st;
+        return st;
+    }
+
+    /// <summary>按像素宽度断行（中文逐字断），每行都是一条独立的单行字符串，永远不会被裁。</summary>
+    private static List<string> WrapCjk(string text, GUIStyle st, float maxW)
+    {
+        var outp = new List<string>();
+        if (string.IsNullOrEmpty(text)) return outp;
+        var sb = new System.Text.StringBuilder();
+        float w = 0f;
+        foreach (char ch in text)
+        {
+            if (ch == '\n') { outp.Add(sb.ToString()); sb.Length = 0; w = 0f; continue; }
+            float cw = st.CalcSize(new GUIContent(ch.ToString())).x;
+            if (w + cw > maxW && sb.Length > 0)
+            {
+                // 行首不收标点
+                string cur = sb.ToString();
+                int cut = ("，。；：、！？）》」』".IndexOf(ch) >= 0 && cur.Length > 1) ? 1 : 0;
+                if (cut == 1) { outp.Add(cur); sb.Length = 0; w = 0f; sb.Append(ch); w = cw; }
+                else { outp.Add(cur); sb.Length = 0; w = 0f; sb.Append(ch); w = cw; }
+                continue;
+            }
+            sb.Append(ch); w += cw;
+        }
+        if (sb.Length > 0) outp.Add(sb.ToString());
+        return outp;
+    }
+
+    /// <summary>正文样式：自动换行、不裁剪。字幕和长句必须用它，否则尾巴会被切掉。</summary>
+    private GUIStyle SW(float px, Color c)
+    {
+        int ipx = Mathf.RoundToInt(px);
+        string k = "w" + ipx + "|" + ColorUtility.ToHtmlStringRGBA(c);
+        if (_styles.TryGetValue(k, out var st)) return st;
+        st = new GUIStyle { font = _font, alignment = TextAnchor.LowerCenter, wordWrap = true,
+                            clipping = TextClipping.Overflow };
+        st.normal.textColor = c;
+        st.fontSize = Mathf.Max(8, ipx);
+        st.padding = new RectOffset(8, 8, 0, 0);
         _styles[k] = st;
         return st;
     }
@@ -154,21 +203,59 @@ public class NeuroUI : MonoBehaviour
         }
 
         if (_mode == Mode.Immersive) DrawImmersive(W, H, s);
-        else
-        {
-            switch (_page)
-            {
-                case Page.Home:   DrawHome(W, H, s);   break;
-                case Page.Breath: DrawBreath(W, H, s); break;
-                default:          DrawAbout(W, H, s);  break;
-            }
-            DrawTabs(W, H, s);
-        }
+        else DrawShell(W, H, s);
 
-        // 外壳态藏掉世界空间里那条巨大的引导标题：卡片里塞不下，会露出一截被切掉的橙字
-        if (_titleR != null) _titleR.enabled = _mode == Mode.Immersive;
+        // 世界空间那条大字牌整体停用：全屏演示只用底部一行小字幕，
+        // 屏幕空间渲染，永远在安全区内，也不会挡住花园。
+        if (_titleR != null) _titleR.enabled = false;
 
         HandleClicks();
+    }
+
+    // ===== App 控制台（极简）=====
+    // 用户要求：这个界面只要两样东西 —— 全屏的 3D 场景，和 App 控制台。
+    // 问候语、插画横幅、光束统计、底部「花园/呼吸/关于」全部删掉。
+    [Tooltip("App 控制台地址（桥接起的网页端）")]
+    public string consoleUrl = "http://127.0.0.1:8899/app.html";
+
+    private void DrawShell(float W, float H, float s)
+    {
+        Fill(new Rect(0, 0, W, H), BG);
+
+        GUI.Label(new Rect(0, H * 0.5f - 190 * s, W, 34 * s), "NeuroBloom",
+                  S(22 * s, TextAnchor.MiddleCenter, INK));
+        GUI.Label(new Rect(0, H * 0.5f - 152 * s, W, 22 * s), "脑境共生 · 呼吸花园",
+                  S(11.5f * s, TextAnchor.MiddleCenter, INK2));
+
+        float cw = Mathf.Min(W - 80 * s, 520 * s);
+        float x = (W - cw) * 0.5f, y = H * 0.5f - 100 * s, rh = 68 * s, gap = 14 * s;
+
+        var full = new Rect(x, y, cw, rh);
+        Round(full, new Color(0.30f, 0.86f, 0.78f, 0.94f));
+        GUI.Label(new Rect(full.x + 24 * s, full.y, cw - 48 * s, rh), "全屏 3D 花园",
+                  S(16 * s, TextAnchor.MiddleLeft, new Color(0.03f, 0.12f, 0.11f)));
+        GUI.Label(new Rect(full.xMax - 120 * s, full.y, 96 * s, rh), "进入 →",
+                  S(13 * s, TextAnchor.MiddleRight, new Color(0.03f, 0.12f, 0.11f)));
+        _zones["enter"] = full;
+
+        var con = new Rect(x, y + rh + gap, cw, rh);
+        Round(con, CARD);
+        GUI.Label(new Rect(con.x + 24 * s, con.y, cw - 48 * s, rh), "App 控制台",
+                  S(16 * s, TextAnchor.MiddleLeft, INK));
+        GUI.Label(new Rect(con.xMax - 120 * s, con.y, 96 * s, rh), "打开 →",
+                  S(13 * s, TextAnchor.MiddleRight, INK2));
+        _zones["console"] = con;
+
+        GUI.Label(new Rect(0, con.yMax + 26 * s, W, 22 * s), "Esc 在 3D 与这里之间切换",
+                  S(11 * s, TextAnchor.MiddleCenter, new Color(0.55f, 0.62f, 0.72f, 0.75f)));
+
+        _zones["back"] = new Rect(-10, -10, 1, 1);
+    }
+
+    private void OpenConsole()
+    {
+        try { Application.OpenURL(consoleUrl); }
+        catch (System.Exception e) { Debug.LogWarning("[NeuroUI] 打开控制台失败：" + e.Message); }
     }
 
     // ===== 首页 =====
@@ -262,7 +349,7 @@ public class NeuroUI : MonoBehaviour
         var win = new Rect(m, y + 190 * s, W - 2 * m, 56 * s);
         Round(win, CARD);
         GUI.Label(new Rect(win.x + 24 * s, win.y, win.width * 0.6f, win.height),
-                  mode != null && mode.IsFullscreen ? "全屏显示" : "小窗显示", S(13 * s, TextAnchor.MiddleLeft, INK));
+                  mode != null && mode.IsFullscreen ? "小窗查看（Esc 也能回）" : "回到全屏 3D", S(13 * s, TextAnchor.MiddleLeft, INK));
         GUI.Label(new Rect(win.xMax - 150 * s, win.y, 126 * s, win.height), "点这里切换", S(12 * s, TextAnchor.MiddleRight, INK2));
         _zones["window"] = win;
     }
@@ -293,26 +380,59 @@ public class NeuroUI : MonoBehaviour
     // ===== 沉浸全屏 =====
     private void DrawImmersive(float W, float H, float s)
     {
-        GUI.color = Color.white;
-        GUI.DrawTexture(new Rect(0, 0, W, 130 * s), _fadeTop, ScaleMode.StretchToFill, true);
-        GUI.DrawTexture(new Rect(0, H - 150 * s, W, 150 * s), _fadeBottom, ScaleMode.StretchToFill, true);
+        // 全屏演示只有一个界面：场景 + 底部一行字幕。
+        // 无品牌条、无标签栏、无按钮、无渐变遮罩。
+        var world = FindFirstObjectByType<NeuroWorldController>();
+        string line = (world != null && !string.IsNullOrEmpty(world.currentScript))
+            ? world.currentScript
+            : "点一下地面，种下一束光";
 
-        var back = new Rect(W - 34 * s - 104 * s, 26 * s, 104 * s, 38 * s);
-        Round(back, new Color(0.05f, 0.09f, 0.12f, 0.66f));
-        GUI.Label(back, "退出", S(13 * s, TextAnchor.MiddleCenter, INK));
-        _zones["back"] = back;
+        // 手动按字宽断行：中文没有空格，靠 wordWrap 会整段拉成一行再被截掉。
+        float capW = Mathf.Min(W - 100 * s, 720 * s);
+        var stCap = SW(18 * s, new Color(0.92f, 0.95f, 1f, 0.90f));
+        var lines = WrapCjk(line, stCap, capW);
+        float lh = stCap.fontSize * 1.5f;
+        for (int i = 0; i < lines.Count; i++)
+        {
+            var r = new Rect((W - capW) * 0.5f, H - 96 * s - lh * (lines.Count - i), capW, lh);
+            GUI.Label(r, lines[i], stCap);
+        }
 
-        float bw = 190 * s, bh = 46 * s;
-        var plant = new Rect((W - bw) * 0.5f, H - 40 * s - bh, bw, bh);
-        Round(plant, new Color(0.13f, 0.32f, 0.35f, 0.72f));
-        GUI.Label(plant, "种一束光", S(14 * s, TextAnchor.MiddleCenter, new Color(0.86f, 1f, 0.96f)));
-        _zones["plant"] = plant;
+        float a = Mathf.Clamp01((6f - (Time.unscaledTime - _readyAt + 10f)) / 2f);
+        if (a > 0.01f)
+            GUI.Label(new Rect(0, H - 40 * s, W, 22 * s),
+                      "点地面种花　·　Esc 回控制台",
+                      S(11 * s, TextAnchor.MiddleCenter, new Color(0.72f, 0.80f, 0.92f, 0.50f * a)));
+
+        _zones["back"] = new Rect(-10, -10, 1, 1);
     }
 
     // ===== 点击 =====
     private void HandleClicks()
     {
         var e = Event.current;
+        // Esc 一个键来回切：3D 全屏 ⇄ 软件自己的控制台。
+        // 不进浏览器、不发系统快捷键，纯粹本窗口内切换。
+        if (e.type == EventType.KeyDown && e.keyCode == KeyCode.Escape)
+        {
+            // ① 启动期的系统补发：直接丢掉，连日志都不刷
+            if (Time.unscaledTime - _bootTime < 12f) return;
+            // ② 同一次按键被投递两帧：1.5 秒内的第二个 Esc 不算新操作
+            if (Time.unscaledTime - _lastEscAt < 1.5f) return;
+            _lastEscAt = Time.unscaledTime;
+            if (_mode == Mode.Immersive)
+            {
+                _mode = Mode.Shell;
+                _readyAt = Time.unscaledTime + 10f;
+            }
+            else
+            {
+                var sm = FindFirstObjectByType<NeuroScreenMode>();
+                if (sm != null && !sm.IsFullscreen) sm.SetFull(true, "Esc 回 3D");
+                _mode = Mode.Immersive;
+                _readyAt = Time.unscaledTime + 10f;
+            }
+        }
         if ((e.mousePosition - _last).sqrMagnitude > 9f) _moved = true;
         _last = e.mousePosition;
 
@@ -336,7 +456,15 @@ public class NeuroUI : MonoBehaviour
 
             switch (hit)
             {
-                case "enter":  _mode = Mode.Immersive; break;
+                case "enter":
+                {
+                    var sm = FindFirstObjectByType<NeuroScreenMode>();
+                    if (sm != null && !sm.IsFullscreen) sm.SetFull(true, "控制台进入全屏");
+                    _mode = Mode.Immersive;
+                    _readyAt = Time.unscaledTime + 10f;
+                    break;
+                }
+                case "console": OpenConsole(); break;
                 case "back":   _mode = Mode.Shell; break;
                 case "plant":  DoPlant(); break;
                 case "tab0":   _page = Page.Home; break;

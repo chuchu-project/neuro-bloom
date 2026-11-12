@@ -33,6 +33,7 @@ public class WorldMessage
     // type == "plant" 时用：控制台上点画面的位置（比例坐标，原点左上角）
     public float u;
     public float v;
+
 }
 
 public class BrainBridge : MonoBehaviour
@@ -201,6 +202,7 @@ public class BrainBridge : MonoBehaviour
             {
                 // 控制台点了一下画面：这是"手控种花"，不参与脑控状态
                 if (parsed.type == "plant") { HandlePlant(parsed.u, parsed.v); continue; }
+
 
                 if (parsed.world_params == null) parsed.world_params = new WorldParams();
                 OnWorld?.Invoke(parsed);

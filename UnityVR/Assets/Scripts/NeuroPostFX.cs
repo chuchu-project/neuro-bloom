@@ -19,21 +19,21 @@ public class NeuroPostFX : MonoBehaviour
     [Header("Bloom 泛光")]
     [Range(0f, 4f)] public float threshold = 1.10f;
     [Range(0f, 1f)] public float softKnee = 0.55f;
-    [Range(0f, 4f)] public float bloomIntensity = 0.70f;
+    [Range(0f, 4f)] public float bloomIntensity = 0.55f;
     [Range(1, 6)] public int blurIterations = 3;
     [Range(0.5f, 4f)] public float blurSpread = 1.00f;
     [Range(0.1f, 3f)] public float exposure = 1.12f;
     [Range(0.3f, 0.98f)] public float tonemapKnee = 0.80f;
 
     [Header("Color Grading 调色")]
-    [Range(0f, 2f)] public float saturation = 1.38f;
+    [Range(0f, 2f)] public float saturation = 1.15f;
     [Range(0f, 2f)] public float contrast = 1.08f;
     public Color shadowTint = new Color(0.82f, 0.76f, 1.00f, 1f);
     public Color highlightTint = new Color(1.00f, 0.96f, 0.86f, 1f);
 
     [Header("Lens 镜头")]
-    [Range(0f, 1f)] public float vignette = 0.30f;
-    [Range(0f, 4f)] public float chromaticAberration = 0.80f;
+    [Range(0f, 1f)] public float vignette = 0.20f;
+    [Range(0f, 4f)] public float chromaticAberration = 0.15f;
 
     private Material _mat;
     private bool _warned;

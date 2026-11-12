@@ -27,11 +27,13 @@ public class NeuroScreenMode : MonoBehaviour
         // 启动模式在这里**主动定死**，不依赖 PlayerSettings 和命令行参数
         // （那两条路实测都会失效，结果就是每次启动都抢全屏、把用户桌面切走）。
         // 默认一律窗口；只有显式要求全屏（正式演示）才进全屏。
-        bool wantFull = false;
+        // 软件打开就是全屏 3D（用户要求：不要窗口、不要前置面板）。
+        // 想临时窗口调试：命令行加 -nb-window，或环境变量 NB_PLAYER_FULLSCREEN=0。
+        bool wantFull = true;
         var env = System.Environment.GetEnvironmentVariable("NB_PLAYER_FULLSCREEN");
-        if (env == "1") wantFull = true;
+        if (env == "0") wantFull = false;
         foreach (var a in System.Environment.GetCommandLineArgs())
-            if (a == "-nb-fullscreen") wantFull = true;
+            if (a == "-nb-window") wantFull = false;
 
         _fullscreen = wantFull;
         Screen.SetResolution(
@@ -58,10 +60,14 @@ public class NeuroScreenMode : MonoBehaviour
         if (w > 0 && h > 0) Screen.SetResolution(w, h, FullScreenMode.FullScreenWindow);
     }
 
-    public void Toggle(string by = "按钮")
+    public void Toggle(string by = "按钮") => SetFull(!_fullscreen, by);
+
+    /// <summary>直接指定全屏/小窗（控制台按钮、桥接指令、Esc 都走这里）。</summary>
+    public void SetFull(bool on, string by = "外部指令")
     {
-        _fullscreen = !_fullscreen;
-        if (_fullscreen) ApplyFullscreen();
+        if (_fullscreen == on) return;
+        _fullscreen = on;
+        if (on) ApplyFullscreen();
         else Screen.SetResolution(windowWidth, windowHeight, FullScreenMode.Windowed);
         Debug.Log($"[ScreenMode] 切到 {(_fullscreen ? "全屏" : $"小窗 {windowWidth}x{windowHeight}")}（来源：{by}）");
     }

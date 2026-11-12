@@ -95,10 +95,11 @@ b,strong{font-weight:600}
 .tag.ok{color:var(--brand-ink);background:var(--brand-soft)}
 .tag.warn{color:var(--warn);background:#fef3e2}
 
+.exp{font-style:normal;font-size:10px;font-weight:500;color:#94a3b8;margin-left:5px;padding:1px 5px;border:1px solid #e2e8f0;border-radius:6px;vertical-align:middle}
 .row-hero{display:grid;grid-template-columns:1.34fr 1fr 1fr;gap:13px;align-items:stretch}
 .row-hero .card{display:flex;flex-direction:column}
 
-/* 放松度环形 */
+/* α/β 指数环形 */
 .hero-relax{align-items:center;text-align:center}
 .hero-relax .card-hd{width:100%;text-align:left}
 .ring{
@@ -223,7 +224,7 @@ b,strong{font-weight:600}
   .train-grid{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;
     gap:16px;flex:1;min-height:0}
   .stage{position:relative;padding:0;overflow:hidden;min-height:0}
-  #stage{display:block;width:100%;height:100%;background:#eef2f5}
+  #stage{display:block;width:100%;height:100%;background:#070a14}
   .stage-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
     gap:9px;background:radial-gradient(circle at 50% 42%,#eef7f5,#e7eef2 72%);color:var(--ink-2);text-align:center;padding:20px}
   .stage-empty i{width:52px;height:52px;border-radius:16px;background:#fff;display:grid;place-items:center;box-shadow:0 2px 10px #0f17201a}
@@ -277,9 +278,34 @@ b,strong{font-weight:600}
   .btn.ghost:hover{background:#f7f9fb;border-color:#c9d3dd;color:var(--ink)}
   .btn.stop{background:#fff;border:1px solid #f0d5d5;color:#b91c1c;box-shadow:none}
   .btn.stop:hover{background:#fdf3f3;border-color:#e7bcbc}
+  .btn.sm{padding:6px 12px;font-size:12px;border-radius:9px}
+  .len-sel{height:34px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink-2);
+           font:inherit;font-size:12px;padding:0 8px;cursor:pointer}
+  .len-sel:hover{border-color:#c9d3dd;color:var(--ink)}
 
   /* ---------- 训练页画面 ---------- */
-  .stage img{width:100%;height:100%;object-fit:cover;display:block;background:#eef2f5}
+  /* 和 Unity 内部一致：黑底、contain、不裁切、不加任何滤镜。
+     之前是 object-fit:cover + 浅色底，画面被裁掉一圈、四周发灰，颜色就不对了。 */
+  .stage{background:#070a14;border-color:#111827}
+  .stage img{width:100%;height:100%;object-fit:contain;display:block;background:#070a14}
+  .stage.live{cursor:crosshair}
+  .breath-line{display:flex;align-items:center;gap:7px;margin-top:10px;padding-top:10px;
+    border-top:1px solid var(--line-soft);font-size:12.5px;color:var(--ink-3)}
+  .breath-line[hidden]{display:none}
+  .breath-line i{width:9px;height:9px;border-radius:50%;background:var(--brand);
+    transform:scale(.7);will-change:transform;flex:none}
+  .breath-line b{color:var(--ink);font-weight:600}
+  .breath-line span{font-variant-numeric:tabular-nums;min-width:22px}
+  .breath-line em{margin-left:auto;font-style:normal;font-size:11.5px;color:var(--ink-3)}
+  .bloom-pop{position:absolute;width:12px;height:12px;border-radius:50%;pointer-events:none;z-index:5;
+    transform:translate(-50%,-50%) scale(.35);
+    background:radial-gradient(circle,#fde68a 0%,#f9a8d4 45%,rgba(45,212,191,0) 72%);
+    animation:bloomPop .95s cubic-bezier(.2,.7,.2,1) forwards}
+  @keyframes bloomPop{60%{opacity:.9}to{transform:translate(-50%,-50%) scale(7);opacity:0}}
+  .stage-empty{background:radial-gradient(circle at 50% 42%,#101827,#070a14 74%);color:#cbd5e1}
+  .stage-empty i{background:rgba(255,255,255,.06);box-shadow:none;border:1px solid rgba(148,163,184,.22)}
+  .stage-empty b{color:#e6edf7}
+  .stage-empty span{color:#8494ad}
 
   /* ---------- 设备页 ---------- */
   .dev-grid{display:grid;grid-template-columns:400px minmax(0,1fr);gap:16px;flex:1;min-height:0}
@@ -301,6 +327,16 @@ b,strong{font-weight:600}
   .howto li{padding:5px 0;border-bottom:1px dashed var(--line-soft)}
   .howto li:last-child{border-bottom:0}
   .howto b{font-weight:650;color:var(--ink)}
+.modal{position:fixed;inset:0;z-index:90;background:rgba(12,16,22,.55);display:flex;align-items:center;justify-content:center;padding:22px}
+.modal[hidden]{display:none}
+.modal-box{width:min(1100px,100%);height:min(88vh,900px);background:var(--surface);border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.32);display:flex;flex-direction:column;overflow:hidden}
+.modal-hd{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.modal-hd h2{margin:0 auto 0 0;font-size:13.5px;font-weight:600}
+.modal-box iframe{flex:1 1 auto;border:0;width:100%;background:#fff}
+.csv-body{flex:1 1 auto;overflow:auto;padding:6px 16px 16px}
+.csv-body table{width:100%;border-collapse:collapse;font-size:12.5px}
+.csv-body th,.csv-body td{border-bottom:1px solid var(--line);padding:7px 8px;text-align:left;white-space:nowrap}
+.csv-body th{color:var(--ink-2);font-weight:600;background:#f7f9fb;position:sticky;top:0}
 </style>
 </head>
 <body class="blind">
@@ -364,6 +400,7 @@ b,strong{font-weight:600}
           <div class="head-act">
             <span class="chip-live" id="liveChip"><i></i><span class="num" id="liveTime">00:00</span></span>
             <button class="btn stop" id="ovStop" hidden>停止</button>
+            <a class="btn ghost sm" id="ovReport" href="http://127.0.0.1:8765/report" target="_blank" rel="noopener">本次报告</a>
             <button class="btn primary" id="startBtn">
               <svg viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5-13-7.5z" fill="currentColor" stroke="none"/></svg>
               开始训练
@@ -373,10 +410,10 @@ b,strong{font-weight:600}
 
         <div class="row-hero">
           <article class="card hero-relax">
-            <div class="card-hd"><h2>放松度</h2><span class="tag" id="goodTag">—</span></div>
+            <div class="card-hd"><h2>α/β 指数<em class="exp">探索性</em></h2><span class="tag" id="goodTag">—</span></div>
             <div class="ring" id="ring">
               <div class="ring-mask">
-                <div class="ring-num"><b id="relaxVal">—</b><span>RELAX</span></div>
+                <div class="ring-num"><b id="relaxVal">—</b><span>α / β</span></div>
               </div>
             </div>
             <div class="state-word bad" id="stateWord">等待数据</div>
@@ -388,7 +425,7 @@ b,strong{font-weight:600}
             <div class="card-hd"><h2>专注度</h2><span class="tag">β / θ</span></div>
             <div class="big"><span id="vFocus">—</span></div>
             <div class="track"><i id="fFocus" style="width:0"></i></div>
-            <p class="note">与放松度独立计算，反映此刻注意力的集中程度。</p>
+            <p class="note">与 α/β 指数独立计算，反映此刻注意力的集中程度。</p>
             <div class="mini">
               <div><span>本段峰值</span><b id="fPeak">—</b></div>
               <div><span>本段平均</span><b id="fAvg">—</b></div>
@@ -399,7 +436,7 @@ b,strong{font-weight:600}
             <div class="card-hd"><h2>今日</h2><span class="tag" id="todayTag">未开始</span></div>
             <ul class="kv">
               <li><span>训练时长</span><b id="todayMin">—<em>分</em></b></li>
-              <li><span>平均放松</span><b id="todayAvg">—</b></li>
+              <li><span>平均指数</span><b id="todayAvg">—</b></li>
               <li><span>连续天数</span><b id="todayStreak">—<em>天</em></b></li>
             </ul>
             <div class="goal">
@@ -410,7 +447,7 @@ b,strong{font-weight:600}
         </div>
 
         <article class="card trend">
-          <div class="card-hd"><h2>本次训练 · 放松度走势</h2><span class="tag" id="trendTag">近 60 秒</span></div>
+          <div class="card-hd"><h2>本次训练 · α/β 指数走势</h2><span class="tag" id="trendTag">近 60 秒</span></div>
           <div class="chart">
             <svg id="spark" viewBox="0 0 1000 158" preserveAspectRatio="none">
               <defs>
@@ -464,7 +501,15 @@ b,strong{font-weight:600}
           </div>
           <div class="head-act">
             <span class="tag" id="trainTag">未开始</span>
+            <span class="tag" id="remainTag" hidden>—</span>
+            <select class="len-sel" id="sessLen" title="到点自动停止，并生成报告">
+              <option value="0">不限时</option>
+              <option value="10">10 分钟</option>
+              <option value="15" selected>15 分钟</option>
+              <option value="20">20 分钟</option>
+            </select>
             <button class="btn stop" id="trainStop" hidden>停止</button>
+            <a class="btn ghost sm" id="trainReport" href="http://127.0.0.1:8765/report" target="_blank" rel="noopener">报告</a>
             <button class="btn primary" id="trainBtn">
               <svg viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5-13-7.5z" fill="currentColor" stroke="none"/></svg>
               开始训练
@@ -479,15 +524,23 @@ b,strong{font-weight:600}
               <i><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2.2"/><path d="M8 21h8M12 18v3"/></svg></i>
               <b>画面待唤醒</b>
               <span>点右上角「开始训练」，Unity 场景会在这里铺满显示。没有采集板时这里保持空着；只想先看数字和波形，用上方的「演示」。</span>
+              <button class="link-btn" id="emptyGoDev" type="button">去「设备」页连接采集板 →</button>
             </div>
           </article>
 
           <div class="train-side">
             <article class="card">
               <div class="card-hd"><h2>当前状态</h2><span class="tag" id="tStateTag">—</span></div>
-              <div class="big"><span id="tRelax">—</span><small>放松度</small></div>
+              <div class="big"><span id="tRelax">—</span><small>α/β 指数</small></div>
               <div class="track"><i id="tFill" style="width:0"></i></div>
               <p class="note" id="tGuide">等待开始训练。</p>
+              <p class="note" id="tHint" hidden>点画面可在对应地面种下一株花。</p>
+              <div class="breath-line" id="breath" hidden>
+                <i id="breathOrb"></i>
+                <b id="breathPhase">吸气</b>
+                <span id="breathLeft">4s</span>
+                <em>6 次/分</em>
+              </div>
             </article>
             <article class="card">
               <div class="card-hd"><h2>这一轮</h2><span class="tag" id="tRound">—</span></div>
@@ -553,15 +606,15 @@ b,strong{font-weight:600}
               <li><span class="k">② 频带功率</span><p>Welch 谱 → 在 α 8–13 Hz、β 13–30 Hz 区间积分</p></li>
               <li><span class="k">③ α / β</span><p><b id="fAb">—</b></p></li>
               <li><span class="k">④ 相对基线</span><p>score = α/β ÷ 个人基线 <b id="fBase">—</b> = <b id="fScore">—</b></p></li>
-              <li><span class="k">⑤ 放松度</span><p>relax = 0.5 + 0.5 · log₂(score) = <b id="fRelax">—</b></p></li>
-              <li><span class="k">⑥ 分档</span><p><b id="fLabel">—</b>（≥0.65 放松 · ≤0.35 紧张）</p></li>
+              <li><span class="k">⑤ α/β 指数</span><p>relax = 0.5 + 0.5 · log₂(score) = <b id="fRelax">—</b></p></li>
+              <li><span class="k">⑥ 分档</span><p><b id="fLabel">—</b>（≥0.65 偏高 · ≤0.35 偏低）</p></li>
             </ol>
             <div class="ruler">
               <div class="ruler-bar">
                 <i style="width:35%;background:#fbe3e3"></i><i style="width:30%;background:#eef1f5"></i><i style="width:35%;background:#d9f0eb"></i>
                 <span class="ruler-pin" id="rulerPin" style="left:50%"></span>
               </div>
-              <div class="ruler-scale"><span>0 紧张</span><span>0.35</span><span>0.65</span><span>1 放松</span></div>
+              <div class="ruler-scale"><span>0 偏低</span><span>0.35</span><span>0.65</span><span>1 偏高</span></div>
             </div>
             <ul class="why">
               <li><b>为什么用相对基线</b>α/β 的绝对值个体差异能到 3 倍，固定阈值等于拿别人的尺子量自己。</li>
@@ -611,7 +664,7 @@ b,strong{font-weight:600}
               <ul class="trlist" id="resReasons"></ul>
             </article>
             <article class="card">
-              <div class="card-hd"><h2>历史随访</h2><span class="tag" id="histTag">0 次</span></div>
+              <div class="card-hd"><h2>历史随访</h2><button class="link-btn" id="histExport" type="button" style="margin:0 10px 0 auto">导出 CSV</button><span class="tag" id="histTag">0 次</span></div>
               <div class="hist" id="histList"></div>
             </article>
           </div>
@@ -675,6 +728,28 @@ b,strong{font-weight:600}
       </section>
     </div>
   </main>
+</div>
+
+<div class="modal" id="reportModal" hidden>
+  <div class="modal-box">
+    <div class="modal-hd">
+      <h2>本次训练报告</h2>
+      <a class="btn ghost sm" id="reportOpenTab" href="http://127.0.0.1:8765/report" target="_blank" rel="noopener">新标签打开</a>
+      <button class="btn ghost sm" type="button" id="reportClose">关闭</button>
+    </div>
+    <iframe id="reportFrame" src="about:blank" title="训练报告"></iframe>
+  </div>
+</div>
+
+<div class="modal" id="csvModal" hidden>
+  <div class="modal-box">
+    <div class="modal-hd">
+      <h2>历史随访记录</h2>
+      <a class="btn primary sm" id="csvDownload" href="http://127.0.0.1:8765/follow.csv">下载 CSV</a>
+      <button class="btn ghost sm" type="button" id="csvClose">关闭</button>
+    </div>
+    <div class="csv-body" id="csvBody"></div>
+  </div>
 </div>
 
 <script>
@@ -758,7 +833,7 @@ b,strong{font-weight:600}
 
   /* ---------- 数据 ---------- */
   const dict = {
-    relaxed: ["放松", ""], tense: ["紧绷", "warn"], neutral: ["平稳", ""],
+    relaxed: ["偏高", ""], tense: ["偏低", "warn"], neutral: ["平稳", ""],
     calibrating: ["正在标定基线", "bad"], invalid: ["信号无效", "bad"],
   };
   const state = { relax: null, focus: null, label: "", nGood: null, board: null, startedAt: null, live: false };
@@ -796,6 +871,17 @@ b,strong{font-weight:600}
     if (!state.startedAt) return;
     const s = Math.floor((Date.now() - state.startedAt) / 1000);
     $("liveTime").textContent = `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+    const lim = +($("sessLen") ? $("sessLen").value : 0);
+    if ($("remainTag")) {
+      if (lim) {
+        const left = Math.max(0, lim * 60 - s);
+        $("remainTag").hidden = false;
+        $("remainTag").textContent = `剩 ${String(Math.floor(left / 60)).padStart(2, "0")}:${String(left % 60).padStart(2, "0")}`;
+        $("remainTag").className = left <= 60 ? "tag warn" : "tag";
+      } else {
+        $("remainTag").hidden = true;
+      }
+    }
     $("todayMin").innerHTML = `${Math.floor(s / 60)}<em>分</em>`;
     const pct = Math.min(100, Math.round((s / 60) / 30 * 100));
     if ($("goalPct")) $("goalPct").textContent = `${pct}%`;
@@ -836,6 +922,7 @@ b,strong{font-weight:600}
         $("runBoard").textContent = m.board_id === -1 ? "演示样本" : "NeuroBloom 采集板";
         if ($("worldTag")) $("worldTag").textContent = m.board_id === -1 ? "演示" : "实时";
       }
+      if (Date.now() < _ignoreStateUntil) return;   // 停止后的迟到帧：不重新拉起界面
       lastStateAt = Date.now();
       paintDevPill();
       setRunning(true);
@@ -1292,7 +1379,7 @@ b,strong{font-weight:600}
     $("fAb").textContent = `${b.alpha.toFixed(1)} ÷ ${b.beta.toFixed(1)} = ${ab.toFixed(2)}`;
     $("fScore").textContent = score.toFixed(2);
     $("fRelax").textContent = (relax * 100).toFixed(1) + "%";
-    $("fLabel").textContent = relax >= 0.65 ? "放松 relaxed" : relax <= 0.35 ? "紧绷 tense" : "平稳 neutral";
+    $("fLabel").textContent = relax >= 0.65 ? "偏高 high" : relax <= 0.35 ? "偏低 low" : "平稳 neutral";
     $("rulerPin").style.left = (relax * 100) + "%";
 
     const diff = Math.abs(relax - m.relax);
@@ -1327,6 +1414,8 @@ b,strong{font-weight:600}
   function fitStage() { /* img 自适应，无需手动改分辨率 */ }
   window.addEventListener("resize", fitStage);
 
+  let lastFrameAt = 0;
+
   function connectVideo() {
     let ws, prevUrl = null;
     try { ws = new WebSocket(VID_URL); } catch (e) { return; }
@@ -1338,11 +1427,110 @@ b,strong{font-weight:600}
       stageImg.onload = () => {
         if (old) URL.revokeObjectURL(old);
         if (stageEmpty) stageEmpty.classList.add("hide");
+        lastFrameAt = Date.now();
+        stageCard.classList.add("live");
+        if (stageHint) stageHint.hidden = false;
       };
       stageImg.src = url;
     };
     ws.onclose = () => setTimeout(connectVideo, 3000);
     ws.onerror = () => { try { ws.close(); } catch (e) {} };
+  }
+
+  /* ---------- 呼吸节拍器：6 次/分（吸 4 秒、呼 6 秒） ----------
+     与文献里效应最稳的 0.1 Hz 对齐；节奏只做引导，不参与判定。 */
+  const BREATH_IN_MS = 4000, BREATH_OUT_MS = 6000;
+  const breathEl = $("breath"), breathOrb = $("breathOrb");
+  const breathPhase = $("breathPhase"), breathLeft = $("breathLeft");
+  let breathOn = false, breathStart = 0, breathRAF = 0;
+
+  const easeIO = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+
+  function breathFrame(ts) {
+    if (!breathOn) return;
+    if (!breathStart) breathStart = ts;
+    const cycle = BREATH_IN_MS + BREATH_OUT_MS;
+    const t = (ts - breathStart) % cycle;
+    let k, label, left;
+    if (t < BREATH_IN_MS) {
+      k = t / BREATH_IN_MS;
+      label = "吸气";
+      left = Math.ceil((BREATH_IN_MS - t) / 1000);
+    } else {
+      k = 1 - (t - BREATH_IN_MS) / BREATH_OUT_MS;
+      label = "呼气";
+      left = Math.ceil((cycle - t) / 1000);
+    }
+    const sc = 0.60 + 0.40 * easeIO(Math.max(0, Math.min(1, k)));
+    if (breathOrb) breathOrb.style.transform = `scale(${sc.toFixed(3)})`;
+    if (breathPhase) breathPhase.textContent = label;
+    if (breathLeft) breathLeft.textContent = left + "s";
+    breathRAF = requestAnimationFrame(breathFrame);
+  }
+
+  function setBreath(on) {
+    if (!breathEl) return;
+    if (breathOn === on) return;
+    breathOn = on;
+    breathEl.hidden = !on;
+    if (on) {
+      breathStart = 0;
+      breathRAF = requestAnimationFrame(breathFrame);
+    } else {
+      cancelAnimationFrame(breathRAF);
+    }
+  }
+
+  /* ---------- 点地面种花 + 鼠标交互 ----------
+     画面是 object-fit:contain，四周有黑边，先把黑边扣掉再换算比例；
+     v 用 y/h（与 Unity 收端约定一致，legacy 版同款算法）。 */
+  const stageCard = document.querySelector(".stage");
+  const stageHint = $("tHint");
+
+  function stageUV(ev) {
+    const box = stageImg.getBoundingClientRect();
+    const iw = stageImg.naturalWidth || 0, ih = stageImg.naturalHeight || 0;
+    if (!iw || !ih || !box.width || !box.height) return null;
+    const k = Math.min(box.width / iw, box.height / ih);
+    const w = iw * k, h = ih * k;
+    const left = box.left + (box.width - w) / 2;
+    const top = box.top + (box.height - h) / 2;
+    const x = ev.clientX - left, y = ev.clientY - top;
+    if (x < 0 || y < 0 || x > w || y > h) return null;
+    return { u: x / w, v: y / h };
+  }
+
+  function popBloom(cx, cy) {
+    if (!stageCard) return;
+    const box = stageCard.getBoundingClientRect();
+    const d = document.createElement("span");
+    d.className = "bloom-pop";
+    d.style.left = (cx - box.left) + "px";
+    d.style.top = (cy - box.top) + "px";
+    stageCard.appendChild(d);
+    setTimeout(() => d.remove(), 1000);
+  }
+
+  function plantAt(ev) {
+    const p = stageUV(ev);
+    if (!p) return;                       // 点在黑边上，不算
+    popBloom(ev.clientX, ev.clientY);     // 先给本地反馈，不等 Unity
+    if (!lastFrameAt || Date.now() - lastFrameAt > 4000) {
+      notice("画面没在跑：先点「开始训练」，Unity 连上后再点地面种花。");
+      return;
+    }
+    fetch(`${API}/garden/plant?u=${p.u.toFixed(4)}&v=${p.v.toFixed(4)}`)
+      .then((r) => r.json())
+      .then((j) => { if (!j.ok) notice(j.error || "种花没成功。"); })
+      .catch(() => notice("连不上桥接，种花没成功。"));
+  }
+
+  if (stageCard) {
+    stageCard.addEventListener("click", (ev) => {
+      if (ev.target.closest(".stage-empty, .stage-hint, button, a")) return;
+      plantAt(ev);
+    });
+
   }
 
   function paintTrain(m) {
@@ -1391,6 +1579,7 @@ b,strong{font-weight:600}
 
   function setRunning(on) {
     ["ovStop", "trainStop"].forEach((id) => { const b = $(id); if (b) b.hidden = !on; });
+    setBreath(on);
   }
 
   /* 左栏胶囊：只认“最近 4 秒有没有脑电消息 + board_id”，不再拿桥接连通冒充设备 */
@@ -1474,14 +1663,22 @@ b,strong{font-weight:600}
     } finally { clearTimeout(timer); }
   }
 
+  let _ignoreStateUntil = 0;
   async function doStop(btn) {
     if (!btn) return;
-    const label = btn.textContent;
-    btn.disabled = true; btn.textContent = "停止中…";
+    _ignoreStateUntil = Date.now() + 2500;
+    // 后端停采集要几秒（等板子收尾），这段必须给反馈：两个停止键一起变成「停止中…」
+    const stops = ["ovStop", "trainStop"].map((id) => $(id)).filter(Boolean);
+    stops.forEach((b) => { b.disabled = true; b.textContent = "停止中…"; });
+    setBreath(false);
     try { await runControl("stop"); } catch (e) {}
-    btn.disabled = false; btn.textContent = label;
+    stops.forEach((b) => { b.disabled = false; b.textContent = "停止"; });
     lastStateAt = 0; state.tagSet = false;
+    state.startedAt = null; _autoStop = false;
+    if ($("liveTime")) $("liveTime").textContent = "00:00";
+    if ($("remainTag")) $("remainTag").hidden = true;
     paintDevPill(); setRunning(false);
+    revealReport();
     ["runTag", "todayTag", "trainTag"].forEach((id) => {
       if ($(id)) { $(id).textContent = "未开始"; $(id).className = "tag"; }
     });
@@ -1556,6 +1753,17 @@ b,strong{font-weight:600}
       ANS.phq2 = q.phq2.items.map(() => null);
       ANS.phq9 = q.phq9.items.map(() => null);
       ANS.gad7 = q.gad7.items.map(() => null);
+      /* 历史以后端 scales.jsonl 为准：localStorage 换个浏览器就没了，
+         之前这里只读本地，导致后端明明记了 4 次、界面还是 0 次。 */
+      if (Array.isArray(d.history) && d.history.length) {
+        HIST = d.history.slice().reverse().map((h) => {
+          const s = h.scores || {};
+          const hit = LVL[h.level] || [h.label || "已评估", ""];
+          return { t: h.t, lv: h.level, name: hit[0], phq2: s.phq2, phq9: s.phq9, gad7: s.gad7 };
+        }).slice(0, 20);
+        try { localStorage.setItem("nb_follow", JSON.stringify(HIST)); } catch (e) {}
+        paintHist();
+      }
       $("scaleTag").textContent = "量表已加载";
       $("scaleTag").className = "tag ok";
     } catch (e) {
@@ -1565,13 +1773,19 @@ b,strong{font-weight:600}
     }
   }
 
+  function histMs(t) { const n = Number(t) || 0; return n < 1e12 ? n * 1000 : n; }
+
   function paintHist() {
     if (!$("histList")) return;
     $("histTag").textContent = `${HIST.length} 次`;
     $("histList").innerHTML = HIST.length ? HIST.map((h) => {
-      const d = new Date(h.t);
+      const d = new Date(histMs(h.t));
       const ds = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-      return `<div class="it"><span>${ds}</span><span><b>${h.name}</b> · PHQ-9 ${h.phq9 ?? "—"} · GAD-7 ${h.gad7 ?? "—"}</span></div>`;
+      return `<div class="it"><span>${ds}</span><span><b>${h.name}</b> · ${[
+        h.phq2 != null ? `PHQ-2 ${h.phq2}` : null,
+        h.phq9 != null ? `PHQ-9 ${h.phq9}` : null,
+        h.gad7 != null ? `GAD-7 ${h.gad7}` : null,
+      ].filter(Boolean).join(" · ") || "—"}</span></div>`;
     }).join("") : '<div class="empty">还没有随访记录。</div>';
   }
 
@@ -1586,7 +1800,7 @@ b,strong{font-weight:600}
     $("resReasons").innerHTML = (t.reasons || []).map(r => `<li>${r}</li>`).join("");
     $("formMsg").textContent = j.saved ? `已记录（${rec.pid || "anon"}）` : "已计算，未写入文件";
     $("formMsg").className = "msg ok";
-    HIST.unshift({ t: Date.now(), lv, name: hit[0], phq9: sc.phq9, gad7: sc.gad7 });
+    HIST.unshift({ t: Date.now(), lv, name: hit[0], phq2: sc.phq2, phq9: sc.phq9, gad7: sc.gad7 });
     HIST = HIST.slice(0, 20);
     try { localStorage.setItem("nb_follow", JSON.stringify(HIST)); } catch (e) {}
     paintHist();
@@ -1621,6 +1835,155 @@ b,strong{font-weight:600}
     $("foldBtn").textContent = box.hidden ? "展开完整量表 PHQ-9 / GAD-7 →" : "收起完整量表 ←";
   });
   if ($("histList")) { paintHist(); loadScales(); }
+
+  /* ================= 本次报告 ================= */
+  /* 报告由桥接在 stop 时同步生成（sessions/report-*.html），
+     但入口一直没接到界面上——训练做完看不到成果，等于白跑。 */
+  function revealReport() {
+    ["ovReport", "trainReport"].forEach((id) => {
+      const a = $(id);
+      if (!a) return;
+      a.href = API + "/report";
+      a.hidden = false;
+    });
+    notice("训练已结束，报告已生成：右上角「本次报告」可直接查看。");
+  }
+
+  /* 报告在应用内打开：取回 HTML 后写进 iframe 的 srcdoc。
+     不跳新标签、不被弹窗拦截、也不受跨端口 iframe 策略影响——
+     报告本身是自包含的单文件，直接本地渲染。 */
+  async function openReport() {
+    const m = $("reportModal"), f = $("reportFrame");
+    m.hidden = false;
+    $("reportOpenTab").href = API + "/report";
+    f.srcdoc = '<p style="font:14px -apple-system,PingFang SC,sans-serif;color:#6b7484;padding:24px">正在读取报告…</p>';
+    if (liveOn) notice("训练还没结束，这里显示的是最近一份报告；停止后才有本次的。");
+    try {
+      const r = await fetch(API + "/report?t=" + Date.now(), { cache: "no-store" });
+      if (!r.ok) {
+        f.srcdoc = '<p style="font:14px -apple-system,PingFang SC,sans-serif;color:#6b7484;padding:24px;line-height:1.8">'
+          + "还没有报告。跑一次训练并点「停止」，报告会自动生成。<br>"
+          + '<a href="' + API + '/report" target="_blank" style="color:#0d9488">或在新标签打开</a></p>';
+        return;
+      }
+      f.srcdoc = await r.text();
+    } catch (err) {
+      f.srcdoc = '<p style="font:14px -apple-system,PingFang SC,sans-serif;color:#b42318;padding:24px;line-height:1.8">'
+        + "读取失败：" + String(err.message || err) + "<br>确认桥接 8765 在运行。</p>";
+    }
+  }
+  function closeReport() {
+    $("reportModal").hidden = true;
+    $("reportFrame").srcdoc = "";
+  }
+  document.addEventListener("click", (e) => {
+    const a = e.target.closest("#ovReport, #trainReport");
+    if (!a) return;
+    e.preventDefault();
+    openReport();
+  });
+  if ($("reportClose")) $("reportClose").addEventListener("click", closeReport);
+  if ($("reportModal")) $("reportModal").addEventListener("click", (e) => {
+    if (e.target === $("reportModal")) closeReport();
+  });
+
+  /* ================= 到点自动停止 ================= */
+  let _autoStop = false;
+  const LEN_KEY = "nb_session_min";
+  if ($("sessLen")) {
+    const saved = localStorage.getItem(LEN_KEY);
+    if (saved !== null && [...$("sessLen").options].some((o) => o.value === saved)) $("sessLen").value = saved;
+    $("sessLen").addEventListener("change", () => {
+      localStorage.setItem(LEN_KEY, $("sessLen").value);
+      _autoStop = false;
+    });
+  }
+  setInterval(() => {
+    if (!state.startedAt) return;
+    const lim = +($("sessLen") ? $("sessLen").value : 0);
+    if (!lim || _autoStop) return;
+    if ((Date.now() - state.startedAt) / 60000 >= lim) {
+      _autoStop = true;
+      notice(`已满 ${lim} 分钟，自动停止并生成报告。`);
+      const b = $("trainStop") && !$("trainStop").hidden ? $("trainStop") : $("ovStop");
+      doStop(b);
+    }
+  }, 1000);
+
+  /* ================= 键盘快捷键 ================= */
+  /* 投屏演示时不用找鼠标：空格 开始/停止，Esc 停止，1–5 切页 */
+  document.addEventListener("keydown", (e) => {
+    const t = e.target;
+    if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const running = $("ovStop") && !$("ovStop").hidden;
+    if (e.code === "Space") {
+      e.preventDefault();
+      if (running) doStop($("ovStop"));
+      else if ($("startBtn")) $("startBtn").click();
+      return;
+    }
+    if (e.key === "Escape") { if (running) doStop($("ovStop")); return; }
+    if (/^[1-5]$/.test(e.key)) {
+      const order = ["overview", "train", "data", "follow", "device"];
+      const nav = document.querySelector(`.nav-item[data-page="${order[+e.key - 1]}"]`);
+      if (nav) nav.click();
+    }
+  });
+
+  /* ================= 空态跳设备页 ================= */
+  if ($("emptyGoDev")) {
+    $("emptyGoDev").addEventListener("click", (e) => {
+      e.stopPropagation();   // 别让点击穿透到舞台，触发种花
+      const nav = document.querySelector('.nav-item[data-page="device"]');
+      if (nav) nav.click();
+    });
+  }
+
+  /* ================= 随访记录导出 ================= */
+  /* 先在应用内弹出表格，再给下载按钮：点一下一定有东西出来，
+     不依赖浏览器对 blob / 跨端口下载的处理差异。 */
+  async function openCsv() {
+    $("csvModal").hidden = false;
+    $("csvDownload").href = API + "/follow.csv";
+    $("csvBody").innerHTML = '<p class="note" style="padding:12px 0">读取中…</p>';
+    try {
+      const r = await fetch(API + "/follow.csv", { cache: "no-store" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const txt = (await r.text()).replace(/^\ufeff/, "");
+      const lines = txt.trim().split(/\r?\n/).filter(Boolean);
+      const cells = (line) => {
+        const out = []; let cur = "", q = false;
+        for (let i = 0; i < line.length; i++) {
+          const c = line[i];
+          if (q) {
+            if (c === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+            else if (c === '"') q = false;
+            else cur += c;
+          } else if (c === '"') q = true;
+          else if (c === ",") { out.push(cur); cur = ""; }
+          else cur += c;
+        }
+        out.push(cur);
+        return out;
+      };
+      const head = cells(lines[0] || "");
+      const body = lines.slice(1).map(cells);
+      $("csvBody").innerHTML = body.length
+        ? `<table><thead><tr>${head.map(h => `<th>${h}</th>`).join("")}</tr></thead><tbody>` +
+          body.map(row => `<tr>${row.map(v => `<td>${v || "—"}</td>`).join("")}</tr>`).join("") +
+          `</tbody></table><p class="note" style="margin-top:10px">共 ${body.length} 条，来自后端 sessions/scales.jsonl。</p>`
+        : '<p class="note" style="padding:12px 0">还没有随访记录。</p>';
+    } catch (err) {
+      $("csvBody").innerHTML = `<p class="note" style="padding:12px 0">读取失败：${err.message}。确认桥接 8765 在跑。</p>`;
+    }
+  }
+  function closeCsv() { $("csvModal").hidden = true; }
+  if ($("histExport")) $("histExport").addEventListener("click", openCsv);
+  if ($("csvClose")) $("csvClose").addEventListener("click", closeCsv);
+  if ($("csvModal")) $("csvModal").addEventListener("click", (e) => {
+    if (e.target === $("csvModal")) closeCsv();
+  });
 
   connect();
 

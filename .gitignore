@@ -45,3 +45,6 @@ rec/
 
 # ── 编辑器/Agent 工具配置（非项目产出） ──
 .opencode/
+
+# ── Unity 编辑器窗口布局（本地偏好，不该进仓库） ──
+UnityVR/UserSettings/Layouts/

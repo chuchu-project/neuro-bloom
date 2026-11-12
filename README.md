@@ -3,6 +3,36 @@
 脑机接口 + 大模型 + VR 减压场景：把使用者的实时脑波状态，翻译成一座会跟着
 变亮、变暗、雾气散开又合拢的虚拟花园。
 
+## 演示
+
+<img src="docs/assets/demo-qr-card.png" width="300" alt="扫码看演示视频">
+
+扫码，或直接打开 [neurobloom-demo.mp4](docs/assets/neurobloom-demo.mp4)（50 秒 · 1280×720 · 7.5 MB）。
+
+画面是 Unity 实时渲染的帧流，不是截图拼接：指数从 0.84 走到 0.96，花开、雾散、光照上升；
+第 30 秒起右下角出现呼吸引导（吸 4 秒 / 呼 6 秒）。演示用合成样本，实际部署时全程带
+`SIMULATED` 水印。
+
+## 课程文档
+
+| 文档 | 内容 |
+| --- | --- |
+| [docs/proposal.md](docs/proposal.md) | Proposal：问题、用户、证据边界、方案、角色、里程碑 |
+| [docs/prd.md](docs/prd.md) | MVP PRD：五页控制台的范围、FR-01–FR-07 与验收标准、排除项 |
+| [docs/tech-design.md](docs/tech-design.md) | 技术设计：结构图、技术栈理由、数据格式、失败降级 |
+| [docs/verification.md](docs/verification.md) | 最终状态表、实测数据、未取得的结果、计划变更 |
+| [docs/decisions.md](docs/decisions.md) | 七条架构决策：选项、结论、事后怎么检查 |
+| [AGENTS.md](AGENTS.md) | 给 AI 助手的项目约束与验证期望 |
+
+## 成员
+
+| 成员 | GitHub | 负责 |
+| --- | --- | --- |
+| 楚景越 | [@chuchu-project](https://github.com/chuchu-project) | 软件设计与实现（采集入口、判定内核、桥接、控制台）、3D 场景与画面推流、技术文档 |
+| 张喻嫣 | [@chefzs929-prog](https://github.com/chefzs929-prog) | 脑电数据采集与实验（戴帽与电极布置、基线标定、实验记录与数据整理、信号质量） |
+
+贡献以 issue / PR / commit 中的 `@username` 记录，规则见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
 ## 目录
 
 | 路径 | 作用 |
@@ -12,14 +42,14 @@
 | `strategy/` | 演示策略层：按轮次把画面调制成八套氛围（P8 那套是不干预对照） |
 | `bridge/` | WebSocket 桥（:8765），EEG / Agent / Unity 三方的唯一交汇点 |
 | `agent_service/` | 书生大模型生成引导语。**演示时不要启动**（见下） |
-| `tools/` | 自评录入、成绩单、延迟实测（`latency_probe.py`） |
+| `tools/` | 自评录入、成绩单、延迟实测（`latency_probe.py`）、重复性（`reliability.py`）、判据区分度（`state_probe.py`） |
 | `sessions/` | 每次训练的会话记录（`.jsonl`）和自动生成的报告（`.html`），本地数据，不进仓库 |
 | `UnityVR/` | Unity 工程，接脑电的三个脚本在 `UnityVR/Assets/Scripts/` |
 | `unity/` | 同一批 C# 脚本的副本 + 编辑器工具（一键搭场景 / 诊断） |
 | `mcp/` | 康复知识库 MCP Server（`query_reha_guide`） |
 | `skills/neurobloom/` | 引导语 Skill：提示词口径的说明文档 |
 | `setup/` | 环境脚本与 VR 机配置说明 |
-| `docs/` | `接真设备-Mac.md` 等操作文档 |
+| `docs/` | `接真设备-Mac.md` 等操作文档；`验证方案.md` 是 5 名健康成人的三层验证协议与结论口径 |
 
 ### `analysis/` 里有什么
 

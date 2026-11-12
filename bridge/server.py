@@ -273,7 +273,9 @@ def _player_args() -> list[str]:
     桌面切走。开发和日常调试一律窗口模式，只有正式演示才 export
     NB_PLAYER_FULLSCREEN=1 全屏。
     """
-    if os.getenv("NB_PLAYER_FULLSCREEN", "0") == "1":   # 正式演示才开全屏
+    # 默认全屏：软件打开就是 3D 页面（NeuroScreenMode 里也按全屏初始化）。
+    # 想窗口调试：export NB_PLAYER_FULLSCREEN=0
+    if os.getenv("NB_PLAYER_FULLSCREEN", "1") == "1":
         return ["-screen-fullscreen", "1"]
     args = ["-screen-fullscreen", "0"]
     try:
@@ -1050,6 +1052,33 @@ async def process_request(connection, request):
         body = json.dumps(snap, ensure_ascii=False).encode("utf-8")
         return Response(200, "OK", Headers([
             ("Content-Type", "application/json; charset=utf-8"),
+            ("Content-Length", str(len(body))),
+            ("Access-Control-Allow-Origin", "*"),
+            ("Cache-Control", "no-store"),
+        ]), body)
+
+    if path in ("/follow.csv", "/follow.csv/"):
+        # 随访历史直出文件：前端 localStorage 换浏览器就没了，CSV 以后端为准。
+        import csv as _csv
+        import io as _io
+        rows = _read_scales(500)
+        buf = _io.StringIO()
+        buf.write("\ufeff")
+        w = _csv.writer(buf, lineterminator="\r\n")
+        w.writerow(["时间", "编号", "分级", "PHQ-2", "PHQ-9", "GAD-7"])
+        for r in rows:
+            s = r.get("scores") or {}
+            try:
+                ts = time.strftime("%Y-%m-%d %H:%M:%S",
+                                   time.localtime(float(r.get("t") or 0)))
+            except (TypeError, ValueError, OSError):
+                ts = ""
+            w.writerow([ts, r.get("pid", ""), r.get("label") or r.get("level") or "",
+                        s.get("phq2", ""), s.get("phq9", ""), s.get("gad7", "")])
+        body = buf.getvalue().encode("utf-8")
+        return Response(200, "OK", Headers([
+            ("Content-Type", "text/csv; charset=utf-8"),
+            ("Content-Disposition", 'attachment; filename="neurobloom-follow.csv"'),
             ("Content-Length", str(len(body))),
             ("Access-Control-Allow-Origin", "*"),
             ("Cache-Control", "no-store"),

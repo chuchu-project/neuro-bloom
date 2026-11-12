@@ -4,7 +4,7 @@
 NeuroBloom 训练会话报告
 
 一次训练跑完，把「这段时间里发生了什么」压成一页纸：
-时长、有效判定比例、放松度走势、专注度、左右半球对称性、频带构成、电极合格率。
+时长、有效判定比例、α/β 指数走势、专注度、左右半球对称性、频带构成、电极合格率。
 
 两种用法：
   1) 桥接在会话结束时自动生成（bridge/server.py 调用 SessionRecorder）
@@ -33,7 +33,7 @@ DEFAULT_DIR = ROOT / "sessions"
 BAND_LABELS = [
     ("delta", "δ 1–4 Hz", "深睡"),
     ("theta", "θ 4–8 Hz", "困倦"),
-    ("alpha", "α 8–13 Hz", "放松"),
+    ("alpha", "α 8–13 Hz", "静息/放松成分"),
     ("beta", "β 13–30 Hz", "警觉"),
     ("gamma", "γ 30–45 Hz", "高负荷"),
 ]
@@ -394,7 +394,7 @@ def render_html(summary: dict[str, Any], rows: list[dict[str, Any]]) -> str:
   .lede b{{display:block;font-size:24px;font-weight:700;letter-spacing:-.4px;font-variant-numeric:tabular-nums}}
   .lede span{{font-size:12px;color:var(--ink3)}}
   h2{{font-size:14px;letter-spacing:.12em;color:var(--ink2);margin:34px 0 10px;
-    padding-bottom:6px;border-bottom:1px solid var(--line);text-transform:uppercase}}
+    padding-bottom:6px;border-bottom:1px solid var(--line)}}
   p{{margin:8px 0}}
   .note{{font-size:13px;color:var(--ink3)}}
   .spark{{display:block;margin:6px 0 4px}}
@@ -420,28 +420,28 @@ def render_html(summary: dict[str, Any], rows: list[dict[str, Any]]) -> str:
 <main class="sheet">
   <header>
     <div class="kicker">NeuroBloom · 训练会话报告</div>
-    <h1>卒中后情绪与注意力辅助训练 · 第 {e(datetime.fromtimestamp(t0).strftime('%m月%d日 %H:%M'))} 次</h1>
+    <h1>卒中后情绪与注意力辅助训练 · {e(datetime.fromtimestamp(t0).strftime('%Y-%m-%d %H:%M'))} 起</h1>
     <div class="meta">开始 {e(_clock(t0))} ｜ 时长 {e(_duration_text(summary['duration']))} ｜ 判定帧 {summary['valid_frames']} 条</div>
   </header>
 
   <section class="lede">
-    <div><b>{_pct(q['relaxed'])}</b><span>处于放松态</span></div>
-    <div><b>{_num_s(summary['relax_mean'], 2)}</b><span>平均放松度 0–1</span></div>
+    <div><b>{_pct(q['relaxed'])}</b><span>高于个人基线</span></div>
+    <div><b>{_num_s(summary['relax_mean'], 2)}</b><span>α/β 指数均值 0–1</span></div>
     <div><b>{_num_s(summary['abs_li_mean'], 2)}</b><span>左右不对称均值</span></div>
     <div><b>{_pct(summary['valid_ratio'])}</b><span>信号有效占比</span></div>
   </section>
 
-  <h2>放松度走势</h2>
+  <h2>α/β 指数走势</h2>
   {_sparkline(pts_relax, lo=0.0, hi=1.0)}
   <div class="axis"><span>开始</span><span>{e(_duration_text(summary['duration']))}</span></div>
-  <p class="note">纵轴 0–1，越高越放松。中途掉下来的地方，通常对应动作、说话或者电极松动。</p>
+  <p class="note">纵轴 0–1，是相对个人基线的比值，越高表示 α/β 越高。中途掉下来的地方，通常对应动作、说话或电极松动。</p>
 
   <h2>两条轴各自的表现</h2>
   <div class="two">
     <div class="kv">
-      <div><span>放松度 平均 / 最高 / 最低</span><span>{_num_s(summary['relax_mean'])} / {_num_s(summary['relax_max'])} / {_num_s(summary['relax_min'])}</span></div>
-      <div><span>结束时的放松度</span><span>{_num_s(summary['relax_last'])}</span></div>
-      <div><span>放松 / 平稳 / 紧绷</span><span>{_pct(q['relaxed'])} / {_pct(q['neutral'])} / {_pct(q['tense'])}</span></div>
+      <div><span>α/β 指数 平均 / 最高 / 最低</span><span>{_num_s(summary['relax_mean'])} / {_num_s(summary['relax_max'])} / {_num_s(summary['relax_min'])}</span></div>
+      <div><span>结束时的 α/β 指数</span><span>{_num_s(summary['relax_last'])}</span></div>
+      <div><span>偏高 / 平稳 / 偏低</span><span>{_pct(q['relaxed'])} / {_pct(q['neutral'])} / {_pct(q['tense'])}</span></div>
     </div>
     <div class="kv">
       <div><span>专注度 平均 / 最高</span><span>{_num_s(summary['focus_mean'])} / {_num_s(summary['focus_max'])}</span></div>
@@ -449,7 +449,7 @@ def render_html(summary: dict[str, Any], rows: list[dict[str, Any]]) -> str:
       <div><span>明显不对称的帧占比</span><span>{_pct(summary['li_notable_ratio'])}</span></div>
     </div>
   </div>
-  <p class="note">专注度是 β/θ 相对个人基线算的，和放松度是两个方向，可以「放松且专注」（比如闭眼静坐），也可以「紧张又分心」。</p>
+  <p class="note">专注度是 β/θ 相对个人基线算的，和 α/β 是两个方向，可以「α/β 偏高且专注」（比如闭眼静坐），也可以「α/β 偏低又分心」。两个指标都只与自己的基线比，不做人群比较。</p>
 
   <h2>左右半球对称性</h2>
   {_sparkline(pts_li, lo=0.0, hi=max([0.3] + [p[1] for p in pts_li]) if pts_li else 0.3)}
@@ -529,7 +529,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"报告已生成：{dst}")
     print(f"  时长 {_duration_text(summary['duration'])}，判定帧 {summary['valid_frames']} 条，"
           f"有效占比 {_pct(summary['valid_ratio'])}")
-    print(f"  放松度均值 {_num_s(summary['relax_mean'])}，不对称均值 {_num_s(summary['abs_li_mean'])}")
+    print(f"  α/β 指数均值 {_num_s(summary['relax_mean'])}，不对称均值 {_num_s(summary['abs_li_mean'])}")
     mk = summary.get("markers") or {}
     if mk.get("n"):
         print(f"  IAF 中位 {_num_s(mk['iaf_median'])} Hz，"

@@ -16,9 +16,10 @@
 
 <img src="docs/assets/demo-qr-card.png" width="300" alt="扫码看演示视频">
 
-扫码，或直接打开 [neurobloom-demo.mp4](docs/assets/neurobloom-demo.mp4)（50 秒 · 1280×720 · 7.5 MB）。
+扫码看 9 分钟产品演示，或直接打开 [在线演示视频](https://neurobloom-demo-video.app.workbuddy.host/?sharecode=HF7ACISLOP)（约 9 分钟 · 免登录）。
+仓库内另附 50 秒片段 [neurobloom-demo.mp4](docs/assets/neurobloom-demo.mp4)（1280×720 · 7.5 MB）。
 
-画面是 Unity 实时渲染的帧流，不是截图拼接：指数从 0.84 走到 0.96，花开、雾散、光照上升；
+片段里画面是 Unity 实时渲染的帧流，不是截图拼接：指数从 0.84 走到 0.96，花开、雾散、光照上升；
 第 30 秒起右下角出现呼吸引导（吸 4 秒 / 呼 6 秒）。演示用合成样本，实际部署时全程带
 `SIMULATED` 水印。
 

@@ -78,6 +78,9 @@ bash start.sh                 # bridge + 采集 + 引导语；bash stop.sh 停
 首次打开由 Unity 重建 `Library/`。仓库不含构建产物（`UnityVR/Build/` 已在 `.gitignore` 中），
 需要独立可执行文件时在 Unity 里 Build 一次即可。
 
+不想开 Unity：直接下 [macOS 演示版 v1.0.0](https://github.com/chuchu-project/neuro-bloom/releases/tag/v1.0.0)
+（Apple Silicon，解压后右键打开；`F11` 切小窗）。
+
 ## 目录结构
 
 | 路径 | 作用 |

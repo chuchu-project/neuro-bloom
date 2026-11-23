@@ -72,7 +72,7 @@
 | 楚景越 | [@chuchu-project](https://github.com/chuchu-project) | 软件设计与实现（采集入口、判定内核、桥接、治疗师控制台）、3D 场景与画面推流、技术文档 |
 | 张喻嫣 | [@chefzs929-prog](https://github.com/chefzs929-prog) | 脑电数据采集与实验（戴帽与电极布置、基线标定流程、实验记录与数据整理、信号质量排查） |
 
-贡献以 issue / PR / commit 中的 `@username` 记录，规则见 [CONTRIBUTING.md](../CONTRIBUTING.md)。
+贡献以 issue / PR / commit 中的 `@username` 记录。
 
 ## 7. 里程碑（Milestones）
 

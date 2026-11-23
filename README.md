@@ -45,6 +45,21 @@
 | 随访量表 | PHQ-2/9、GAD-7 计分与分层，第 9 题红线，导出 CSV |
 | 演示模式 | 手动开启，全程 `SIMULATED` 水印，关掉立刻回到空态 |
 
+## 界面
+
+治疗师端控制台（`dashboard/`，原生 HTML/JS，无需构建）：
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/assets/screenshots/overview.jpg" alt="总览：放松度、专注度、今日进度与本次走势"></td>
+    <td width="50%"><img src="docs/assets/screenshots/train.jpg" alt="实时训练：当前状态、训练策略与轮次"></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/assets/screenshots/follow.jpg" alt="情绪随访：PHQ-2 初筛与历史记录"></td>
+    <td width="50%"><img src="docs/assets/screenshots/proof.jpg" alt="信号与判据：波形、频带功率与判定推演"></td>
+  </tr>
+</table>
+
 ## 怎么跑起来
 
 ```bash
@@ -58,6 +73,10 @@ bash start.sh                 # bridge + 采集 + 引导语；bash stop.sh 停
 链路可跑通，但画面带水印。
 
 双击 `打开演示.command` 可一键回放已录制的 BDF，每 10 秒换一轮氛围，开局 3 轮为不干预对照。
+
+三维花园端用 Unity **6000.0.22f1** 打开 `UnityVR/`，载入 `Assets/Scenes/NeuroBloom.unity` 后 Play；
+首次打开由 Unity 重建 `Library/`。仓库不含构建产物（`UnityVR/Build/` 已在 `.gitignore` 中），
+需要独立可执行文件时在 Unity 里 Build 一次即可。
 
 ## 目录结构
 
@@ -78,7 +97,7 @@ bash start.sh                 # bridge + 采集 + 引导语；bash stop.sh 停
 | 成员 | GitHub | 负责 |
 | --- | --- | --- |
 | 楚景越 | [@chuchu-project](https://github.com/chuchu-project) | 软件设计与实现（采集、判定、桥接、控制台）、3D 场景与推流、技术文档 |
-| 张喻嫣 | [@chefzs929-prog](https://github.com/chefzs929-prog) | 脑电数据采集与实验（戴帽与电极布置、基线标定、实验记录、信号质量排查） |
+| 张喻嬿 | [@chefzs929-prog](https://github.com/chefzs929-prog) | 脑电数据采集与实验（戴帽与电极布置、基线标定、实验记录、信号质量排查） |
 
 贡献以 issue / PR / commit 中的 `@username` 记录。
 
@@ -142,3 +161,7 @@ agent_service（引导语，可选）──────────────�
 - 无真脑电设备时，控制台点「演示（非脑电）」跑通整条链路；演示样本一律标注，不当真实数据用。
 - 接真设备用环境变量切换，不改代码（见 [接真设备（Mac）](docs/接真设备-Mac.md)）。
 - 全部密钥走 `.env`，不提交仓库。
+
+## 许可
+
+MIT，见 [LICENSE](LICENSE)。第三方 Unity 资产与字体遵循其原始许可。

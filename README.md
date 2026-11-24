@@ -1,5 +1,7 @@
 # NeuroBloom 脑境疗愈
 
+**[⬇ 下载 macOS 演示版 v1.0.0](https://github.com/chuchu-project/neuro-bloom/releases/latest)** ｜ 解压双击即跑（Apple Silicon；未公证，首次右键 →「打开」）｜ 只看视频可扫下方二维码
+
 卒中后居家康复的脑电闭环训练与随访智能体。
 
 用一台 16 通道脑电设备，把使用者的实时状态翻译成一座会变亮、变暗、雾气聚散的

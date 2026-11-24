@@ -1,6 +1,6 @@
 # NeuroBloom 脑境疗愈
 
-**[⬇ 下载 macOS 演示版 v1.0.0](https://github.com/chuchu-project/neuro-bloom/releases/latest)** ｜ 解压双击即跑（Apple Silicon；未公证，首次右键 →「打开」）｜ 只看视频可扫下方二维码
+**[⬇ 点此下载 macOS 演示版 v1.0.0（36 MB）](https://github.com/chuchu-project/neuro-bloom/releases/download/v1.0.0/NeuroBloom-macOS-arm64-v1.0.zip)** ｜ 点击即开始下载，解压双击运行（Apple Silicon；未公证，首次右键 →「打开」）
 
 卒中后居家康复的脑电闭环训练与随访智能体。
 
@@ -16,9 +16,9 @@
 
 ## 演示
 
-<img src="docs/assets/demo-qr-card.png" width="300" alt="扫码看演示视频">
+<a href="https://neurobloom-demo-video.app.workbuddy.host/?sharecode=HF7ACISLOP"><img src="docs/assets/demo-qr-card.png" width="300" alt="点击卡片或扫码看演示视频"></a>
 
-扫码看 9 分钟产品演示，或直接打开 [在线演示视频](https://neurobloom-demo-video.app.workbuddy.host/?sharecode=HF7ACISLOP)（约 9 分钟 · 免登录）。
+**点上面这张卡片直接看视频**，或扫码，或打开 [在线演示视频](https://neurobloom-demo-video.app.workbuddy.host/?sharecode=HF7ACISLOP)（约 9 分钟 · 免登录）。
 仓库内另附 50 秒片段 [neurobloom-demo.mp4](docs/assets/neurobloom-demo.mp4)（1280×720 · 7.5 MB）。
 
 片段里画面是 Unity 实时渲染的帧流，不是截图拼接：指数从 0.84 走到 0.96，花开、雾散、光照上升；

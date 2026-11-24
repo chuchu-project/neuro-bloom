@@ -1,8 +1,14 @@
 # NeuroBloom 脑境疗愈
 
-## [⬇ 点此下载 macOS 演示版（36 MB）](https://github.com/chuchu-project/neuro-bloom/releases/download/v1.0.0/NeuroBloom-macOS-arm64-v1.0.zip)
+**下载 macOS 演示版（36 MB）**：直接点下面这行网址，或复制它粘贴到浏览器地址栏按回车。
 
-解压双击 `NeuroBloom.app` 运行（Apple Silicon，首次需右键 →「打开」）。GitHub 打不开时用[镜像下载](https://ghproxy.net/https://github.com/chuchu-project/neuro-bloom/releases/download/v1.0.0/NeuroBloom-macOS-arm64-v1.0.zip)。
+https://github.com/chuchu-project/neuro-bloom/releases/download/v1.0.0/NeuroBloom-macOS-arm64-v1.0.zip
+
+GitHub 打不开时，改用这个镜像地址（同样粘贴到地址栏回车）：
+
+https://ghproxy.net/https://github.com/chuchu-project/neuro-bloom/releases/download/v1.0.0/NeuroBloom-macOS-arm64-v1.0.zip
+
+解压后双击 `NeuroBloom.app` 运行。首次打开会被系统拦住，右键 →「打开」。仅 Apple Silicon。
 
 卒中后居家康复的脑电闭环训练与随访智能体。
 
